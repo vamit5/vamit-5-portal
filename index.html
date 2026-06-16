@@ -486,7 +486,7 @@ function Dashboard({ athlete, profile }) {
         <MiniStat label="Reels (total)" value={stats.reels_total} sub={stats.reels_pending + ' pending'} />
         <MiniStat label="Reels (mesec)" value={stats.reels_month} sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)} />
         <MiniStat label="Prodaje (total)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
-        <MiniStat label="Tvoj kod" value={athlete.promo_code} sub="Affiliate"/>
+        <MiniStat label="Rewardful" value={athlete.rewardful_token ? '✓ Povezan' : '⚠ Nije'} sub={athlete.rewardful_token ? 'Aktivan' : 'Podesi u Profilu'}/>
       </div>
 
       {/* ACTIVITY */}
@@ -826,6 +826,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
 function ProfilPage({ athlete, profile, refreshProfile }) {
   const [form, setForm] = useState({
     full_name: profile?.full_name || '',
+    rewardful_token: athlete?.rewardful_token || '',
     bank_full_name: athlete?.bank_full_name || '',
     bank_iban: athlete?.bank_iban || '',
     bank_name: athlete?.bank_name || '',
@@ -833,10 +834,12 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(()=> {
     setForm({
       full_name: profile?.full_name || '',
+      rewardful_token: athlete?.rewardful_token || '',
       bank_full_name: athlete?.bank_full_name || '',
       bank_iban: athlete?.bank_iban || '',
       bank_name: athlete?.bank_name || '',
@@ -850,6 +853,7 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
     const [p, a] = await Promise.all([
       supa.from('profiles').update({ full_name: form.full_name }).eq('id', profile.id),
       supa.from('athletes').update({
+        rewardful_token: form.rewardful_token || null,
         bank_full_name: form.bank_full_name,
         bank_iban: form.bank_iban,
         bank_name: form.bank_name,
@@ -861,20 +865,62 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
     else { setMsg({type:'ok', text:'✓ Sačuvano!'}); await refreshProfile(profile.id); }
   }
 
+  const rewardfulLink = athlete?.rewardful_token ? `https://vamit-5-2.getrewardful.com/?via=${athlete.rewardful_token}` : null;
+
+  function copyLink() {
+    if (!rewardfulLink) return;
+    navigator.clipboard.writeText(rewardfulLink);
+    setCopied(true);
+    setTimeout(()=>setCopied(false), 2000);
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">👤 Profil</h1>
-        <p className="text-sm text-white/60">Lični i bank podaci.</p>
+        <p className="text-sm text-white/60">Lični podaci, affiliate link i bank info.</p>
+      </div>
+
+      {/* REWARDFUL LINK CARD */}
+      <div className="glass-strong rounded-2xl p-5 sm:p-6" style={{borderColor:'rgba(0,240,255,0.3)'}}>
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="font-display font-bold text-base">🔗 Tvoj Rewardful Affiliate Link</div>
+            <div className="text-xs text-white/60 mt-1">Deli ovaj link — kad neko kupi preko njega, ti zaradiš.</div>
+          </div>
+        </div>
+        {rewardfulLink ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
+              <code className="text-xs sm:text-sm text-brand flex-1 break-all">{rewardfulLink}</code>
+              <button onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
+                {copied ? '✓ Kopirano' : '📋 Kopiraj'}
+              </button>
+            </div>
+            <div className="text-[11px] text-white/50">Token: <code className="text-brand">{athlete.rewardful_token}</code></div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl bg-gold/10 border border-gold/30 text-sm">
+            ⚠ <b className="text-gold">Rewardful token nije postavljen.</b> Registruj se na{' '}
+            <a href="https://vamit-5-2.getrewardful.com/" target="_blank" rel="noopener" className="text-brand underline">vamit-5-2.getrewardful.com</a>
+            {' '}i unesi svoj token ispod.
+          </div>
+        )}
       </div>
 
       <form onSubmit={save} className="space-y-5">
         <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4">
           <div className="font-display font-bold text-base">Osnovni podaci</div>
           <Field label="Email"><input value={profile?.email||''} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
-          <Field label="Tvoj affiliate kod"><input value={athlete?.promo_code||''} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60 font-mono uppercase"/></Field>
           <Field label="Tvoj nivo"><input value={LEVEL_THEME[athlete?.level||'recruit'].name} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
           <Field label="Puno ime"><input value={form.full_name} onChange={e=>setForm({...form, full_name:e.target.value})} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
+          <Field label="Rewardful Token (nalazi se u tvom Rewardful nalogu)">
+            <input value={form.rewardful_token} onChange={e=>setForm({...form, rewardful_token:e.target.value})}
+              placeholder="npr. abc123" className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/>
+            <div className="text-[11px] text-white/50 mt-1.5">
+              Token je deo URL-a kad odeš u svoj Rewardful nalog (npr. <code>?via=abc123</code> — token je <code>abc123</code>).
+            </div>
+          </Field>
         </div>
 
         <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4">
@@ -1031,32 +1077,229 @@ function AdminPayoutQueue() {
 
 function AdminAthletes() {
   const [list, setList] = useState([]);
+  const [selected, setSelected] = useState(null);
+
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('athletes').select('*, profiles!athletes_id_fkey(email, full_name)').order('created_at',{ascending:false}).limit(100);
+    const { data } = await supa.from('athletes').select('*, profiles!athletes_id_fkey(email, full_name, phone, role)').order('created_at',{ascending:false}).limit(200);
     setList(data||[]);
   }
+
   return (
-    <div className="glass rounded-2xl p-5 overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead><tr className="text-left text-xs text-white/50 uppercase">
-          <th className="py-2">Atleta</th><th>Kod</th><th>Nivo</th><th>XP</th><th>Pridruzio</th>
-        </tr></thead>
-        <tbody>
-        {list.map(a => (
-          <tr key={a.id} className="border-t border-white/5">
-            <td className="py-3">
-              <div className="font-bold">{a.profiles?.full_name || '—'}</div>
-              <div className="text-[11px] text-white/40">{a.profiles?.email}</div>
-            </td>
-            <td><code className="text-brand text-xs">{a.promo_code}</code></td>
-            <td><span className="text-xs font-bold" style={{color: LEVEL_THEME[a.level].color}}>{LEVEL_THEME[a.level].name}</span></td>
-            <td className="text-xs">{a.current_xp || 0}</td>
-            <td className="text-xs text-white/50">{formatDate(a.joined_at)}</td>
-          </tr>
-        ))}
-        </tbody>
-      </table>
+    <>
+      <div className="glass rounded-2xl p-3 sm:p-5 overflow-x-auto">
+        <table className="w-full text-sm min-w-[600px]">
+          <thead>
+            <tr className="text-left text-[10px] text-white/50 uppercase tracking-wider border-b border-white/10">
+              <th className="py-3 px-2">Atleta</th>
+              <th className="px-2">Nivo</th>
+              <th className="px-2">Rewardful</th>
+              <th className="px-2">Telefon</th>
+              <th className="px-2">Banka</th>
+              <th className="px-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map(a => (
+              <tr key={a.id} className="border-b border-white/5 hover:bg-white/5">
+                <td className="py-3 px-2">
+                  <div className="font-bold text-sm">{a.profiles?.full_name || '—'}</div>
+                  <div className="text-[11px] text-white/40">{a.profiles?.email}</div>
+                </td>
+                <td className="px-2">
+                  <span className="text-xs font-bold" style={{color: LEVEL_THEME[a.level].color}}>{LEVEL_THEME[a.level].name}</span>
+                  <div className="text-[10px] text-white/40">{a.current_xp || 0} XP</div>
+                </td>
+                <td className="px-2 text-xs">
+                  {a.rewardful_token ? <span className="text-lime">✓</span> : <span className="text-gold">⚠</span>}
+                  {' '}<code className="text-white/60 text-[10px]">{a.rewardful_token || '—'}</code>
+                </td>
+                <td className="px-2 text-xs text-white/70">{a.bank_phone || '—'}</td>
+                <td className="px-2 text-xs">
+                  {a.bank_iban ? <span className="text-lime">✓ IBAN</span> : <span className="text-white/40">—</span>}
+                </td>
+                <td className="px-2">
+                  <button onClick={()=>setSelected(a)} className="px-3 py-1.5 rounded-lg bg-brand/15 text-brand text-xs font-bold">Detalji</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {selected && <AthleteDetailsModal athlete={selected} onClose={()=>setSelected(null)} onUpdate={load}/>}
+    </>
+  );
+}
+
+function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
+  const [stats, setStats] = useState({ reels:0, reels_pending:0, sales:0, earned_total:0, earned_paid:0, earned_pending:0, earned_available:0 });
+  const [editMode, setEditMode] = useState(false);
+  const [form, setForm] = useState({ ...athlete });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(()=> { load(); }, [athlete.id]);
+  async function load() {
+    const [r1, r2, s1, e1] = await Promise.all([
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
+      supa.from('earnings_ledger').select('amount_cents, status, payout_request_id').eq('athlete_id', athlete.id)
+    ]);
+    const earn = e1.data || [];
+    setStats({
+      reels: r1.count||0,
+      reels_pending: r2.count||0,
+      sales: s1.count||0,
+      earned_total: earn.reduce((s,x)=>s+x.amount_cents,0),
+      earned_paid: earn.filter(x=>x.status==='paid').reduce((s,x)=>s+x.amount_cents,0),
+      earned_pending: earn.filter(x=>x.status==='pending').reduce((s,x)=>s+x.amount_cents,0),
+      earned_available: earn.filter(x=>x.status==='available' && !x.payout_request_id).reduce((s,x)=>s+x.amount_cents,0)
+    });
+  }
+
+  async function saveChanges() {
+    setSaving(true);
+    const updates = {
+      level: form.level,
+      rewardful_token: form.rewardful_token || null,
+      bank_full_name: form.bank_full_name || null,
+      bank_iban: form.bank_iban || null,
+      bank_name: form.bank_name || null,
+      bank_phone: form.bank_phone || null,
+      status: form.status
+    };
+    const { error } = await supa.from('athletes').update(updates).eq('id', athlete.id);
+    if (form.full_name !== athlete.profiles?.full_name) {
+      await supa.from('profiles').update({ full_name: form.full_name }).eq('id', athlete.id);
+    }
+    setSaving(false);
+    if (error) alert('Greška: ' + error.message);
+    else { alert('✓ Sačuvano'); setEditMode(false); onUpdate(); }
+  }
+
+  const theme = LEVEL_THEME[athlete.level];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-bg0/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="glass-strong rounded-2xl max-w-2xl w-full p-5 sm:p-7 my-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="text-xs text-white/50 uppercase tracking-wider">Atleta detalji</div>
+            <h2 className="font-display font-black text-xl sm:text-2xl">{athlete.profiles?.full_name || athlete.profiles?.email}</h2>
+            <div className="text-xs text-white/60">{athlete.profiles?.email}</div>
+          </div>
+          <button onClick={onClose} className="text-2xl text-white/60 hover:text-white">✕</button>
+        </div>
+
+        {/* STATS GRID */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+          <div className="glass rounded-xl p-3">
+            <div className="text-[9px] uppercase tracking-wider text-white/50">Nivo</div>
+            <div className="font-black text-sm" style={{color: theme.color}}>{theme.emoji} {theme.name}</div>
+            <div className="text-[10px] text-white/40">{athlete.current_xp || 0} XP</div>
+          </div>
+          <div className="glass rounded-xl p-3">
+            <div className="text-[9px] uppercase tracking-wider text-white/50">Reels</div>
+            <div className="font-black text-sm">{stats.reels}</div>
+            <div className="text-[10px] text-white/40">{stats.reels_pending} pending</div>
+          </div>
+          <div className="glass rounded-xl p-3">
+            <div className="text-[9px] uppercase tracking-wider text-white/50">Prodaje</div>
+            <div className="font-black text-sm">{stats.sales}</div>
+          </div>
+          <div className="glass rounded-xl p-3">
+            <div className="text-[9px] uppercase tracking-wider text-white/50">Pridruzio</div>
+            <div className="font-black text-xs">{formatDate(athlete.joined_at)}</div>
+          </div>
+        </div>
+
+        {/* EARNINGS GRID */}
+        <div className="glass rounded-xl p-4 mb-5">
+          <div className="text-xs font-bold text-white/70 mb-2">💰 Zarade</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] text-white/50">Total earned</div>
+              <div className="font-black text-base text-brand">{formatEUR(stats.earned_total)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-white/50">Already paid</div>
+              <div className="font-black text-base text-lime">{formatEUR(stats.earned_paid)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-white/50">Available</div>
+              <div className="font-black text-base text-gold">{formatEUR(stats.earned_available)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-white/50">Pending</div>
+              <div className="font-black text-base text-white/70">{formatEUR(stats.earned_pending)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* INFO / EDIT */}
+        {!editMode ? (
+          <>
+            <div className="space-y-3 mb-5">
+              <DetailRow label="Status" value={athlete.status} mono/>
+              <DetailRow label="Rewardful Token" value={athlete.rewardful_token || '— (nije postavljen)'} mono/>
+              <DetailRow label="Rewardful Affiliate ID" value={athlete.rewardful_affiliate_id || '—'} mono/>
+              <DetailRow label="Telefon" value={athlete.bank_phone || '—'}/>
+              <DetailRow label="🏦 Bank Ime" value={athlete.bank_full_name || '—'}/>
+              <DetailRow label="🏦 IBAN" value={athlete.bank_iban || '—'} mono/>
+              <DetailRow label="🏦 Banka" value={athlete.bank_name || '—'}/>
+              <DetailRow label="Stripe Customer ID" value={athlete.stripe_customer_id || '—'} mono/>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>setEditMode(true)} className="flex-1 py-2.5 rounded-xl bg-brand/15 border border-brand/40 text-brand font-bold text-sm">✏️ Edituj</button>
+              <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Zatvori</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="space-y-3 mb-5">
+              <EditField label="Puno ime" value={form.full_name||''} onChange={v=>setForm({...form, full_name:v})}/>
+              <EditField label="Status" type="select" options={['active','suspended','banned','applicant']} value={form.status} onChange={v=>setForm({...form, status:v})}/>
+              <EditField label="Nivo" type="select" options={['recruit','pro','commando','elite']} value={form.level} onChange={v=>setForm({...form, level:v})}/>
+              <EditField label="Rewardful Token" value={form.rewardful_token||''} onChange={v=>setForm({...form, rewardful_token:v})}/>
+              <EditField label="Telefon" value={form.bank_phone||''} onChange={v=>setForm({...form, bank_phone:v})}/>
+              <EditField label="Bank ime" value={form.bank_full_name||''} onChange={v=>setForm({...form, bank_full_name:v})}/>
+              <EditField label="IBAN" value={form.bank_iban||''} onChange={v=>setForm({...form, bank_iban:v})} mono/>
+              <EditField label="Banka" value={form.bank_name||''} onChange={v=>setForm({...form, bank_name:v})}/>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveChanges} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
+                {saving ? 'Snimam...' : '💾 Sačuvaj'}
+              </button>
+              <button onClick={()=>{setEditMode(false); setForm({...athlete});}} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 border-b border-white/5">
+      <div className="text-xs text-white/50 uppercase tracking-wider shrink-0">{label}</div>
+      <div className={"text-sm text-right break-all " + (mono ? 'font-mono text-brand' : 'text-white')}>{value}</div>
+    </div>
+  );
+}
+
+function EditField({ label, value, onChange, type='text', options, mono }) {
+  return (
+    <div>
+      <label className="block text-[10px] uppercase tracking-wider text-white/60 font-bold mb-1.5">{label}</label>
+      {type === 'select' ? (
+        <select value={value} onChange={e=>onChange(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm">
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input value={value} onChange={e=>onChange(e.target.value)} className={"w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm " + (mono?'font-mono':'')}/>
+      )}
     </div>
   );
 }
