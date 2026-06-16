@@ -292,6 +292,141 @@ function LoginPage() {
 }
 
 // === PORTAL SHELL ===
+// =====================================================
+// === NOTIFICATION BELL + PANEL + REAL-TIME TOAST ===
+// =====================================================
+function NotificationBell({ athlete }) {
+  const [open, setOpen] = useState(false);
+  const [notifs, setNotifs] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!athlete?.id) return;
+    load();
+    const ch = supa.channel('notif_' + athlete.id)
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter: 'athlete_id=eq.'+athlete.id }, (payload) => {
+        const n = payload.new;
+        setNotifs(prev => [n, ...prev].slice(0, 30));
+        setUnread(u => u + 1);
+        setToast(n);
+        setTimeout(()=>setToast(null), 5000);
+        // Browser notification ako je dozvoljeno
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(n.title, { body: n.body || '', icon: '/favicon.ico' });
+          }
+        } catch(e){}
+      })
+      .subscribe();
+    return () => { try { ch.unsubscribe(); } catch(e){} };
+  }, [athlete?.id]);
+
+  async function load() {
+    const { data } = await supa.from('notifications').select('*').eq('athlete_id', athlete.id).order('created_at',{ascending:false}).limit(30);
+    setNotifs(data||[]);
+    setUnread((data||[]).filter(n => !n.read_at).length);
+  }
+
+  async function markAllRead() {
+    await supa.from('notifications').update({ read_at: new Date().toISOString() }).eq('athlete_id', athlete.id).is('read_at', null);
+    setNotifs(prev => prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+    setUnread(0);
+  }
+  async function markOne(id) {
+    await supa.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    setUnread(u => Math.max(0, u-1));
+  }
+  async function requestPush() {
+    try {
+      if (typeof Notification === 'undefined') return;
+      const p = await Notification.requestPermission();
+      if (p === 'granted') alert('✓ Browser notifikacije uključene');
+    } catch(e){}
+  }
+
+  if (!athlete?.id) return null;
+
+  return (
+    <>
+      <button onClick={()=>setOpen(o=>!o)} className="relative p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10">
+        <span className="text-lg">🔔</span>
+        {unread > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-bg0 text-[10px] font-black flex items-center justify-center">{unread > 99 ? '99+' : unread}</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="fixed sm:absolute inset-0 sm:inset-auto sm:top-14 sm:right-4 sm:w-96 sm:max-h-[70vh] z-50 sm:rounded-2xl bg-bg0/95 sm:bg-bg0/98 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden flex flex-col" onClick={e=>e.stopPropagation()}>
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
+            <div className="font-display font-black text-base">🔔 Notifikacije</div>
+            <div className="flex items-center gap-2">
+              {unread > 0 && <button onClick={markAllRead} className="text-[10px] text-brand font-bold">Označi sve kao pročitano</button>}
+              <button onClick={()=>setOpen(false)} className="text-2xl text-white/60 sm:text-base">✕</button>
+            </div>
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {notifs.length === 0 ? (
+              <div className="text-center py-12 text-sm text-white/50">Nema notifikacija. Sve je tiho. 🌙</div>
+            ) : (
+              <div>
+                {notifs.map(n => (
+                  <button key={n.id} onClick={()=>{markOne(n.id); if (n.action_url) window.location.hash = n.action_url;}}
+                    className={"w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 flex items-start gap-3 " + (!n.read_at ? 'bg-brand/5' : '')}>
+                    <div className="text-2xl shrink-0">{n.icon || (n.priority==='urgent'?'🚨':n.priority==='high'?'⚡':'🔔')}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className={"font-bold text-sm truncate " + (!n.read_at ? 'text-white' : 'text-white/70')}>{n.title}</div>
+                        {!n.read_at && <div className="w-2 h-2 rounded-full bg-brand shrink-0"></div>}
+                      </div>
+                      {n.body && <div className="text-[11px] text-white/60 line-clamp-2 mt-0.5">{n.body}</div>}
+                      <div className="text-[10px] text-white/40 mt-1">{fromNow(n.created_at)}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="p-3 border-t border-white/10 flex gap-2">
+            <a href="#/notifikacije" onClick={()=>setOpen(false)} className="flex-1 text-center px-3 py-2 rounded-lg bg-brand/15 text-brand text-xs font-bold">Vidi sve</a>
+            {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+              <button onClick={requestPush} className="px-3 py-2 rounded-lg bg-white/5 text-xs">🔔 Allow Browser</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {toast && <NotificationToast notif={toast} onClose={()=>setToast(null)}/>}
+    </>
+  );
+}
+
+function NotificationToast({ notif, onClose }) {
+  const priorityStyle = {
+    urgent: { border:'border-danger/60', glow:'rgba(255,77,77,0.4)' },
+    high:   { border:'border-gold/60',   glow:'rgba(255,194,75,0.4)' },
+    normal: { border:'border-brand/60',  glow:'rgba(0,240,255,0.4)' },
+    low:    { border:'border-white/20',  glow:'rgba(255,255,255,0.2)' },
+  }[notif.priority || 'normal'];
+  return (
+    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] max-w-sm w-[calc(100%-2rem)] animate-bounce-in">
+      <button onClick={()=>{ if (notif.action_url) window.location.hash = notif.action_url; onClose();}}
+        className={"w-full glass-strong rounded-2xl p-4 border-2 text-left shadow-2xl " + priorityStyle.border}
+        style={{boxShadow: '0 0 60px ' + priorityStyle.glow}}>
+        <div className="flex items-start gap-3">
+          <div className="text-3xl">{notif.icon || (notif.priority==='urgent'?'🚨':'🔔')}</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-display font-black text-sm">{notif.title}</div>
+            {notif.body && <div className="text-xs text-white/70 mt-1 line-clamp-2">{notif.body}</div>}
+          </div>
+          <button onClick={(e)=>{e.stopPropagation(); onClose();}} className="text-white/50 text-lg shrink-0">✕</button>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 function PortalShell({ profile, athlete, route, children, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const theme = LEVEL_THEME[athlete?.level || 'recruit'];
@@ -304,6 +439,7 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
     { hash:'#/dostignuca', label:'Dostignuća', emoji:'🏆' },
     { hash:'#/rang',       label:'Rang Lista', emoji:'📊' },
     { hash:'#/isplate',    label:'Isplate',    emoji:'💸' },
+    { hash:'#/notifikacije', label:'Notifikacije', emoji:'🔔' },
     { hash:'#/profil',     label:'Profil',     emoji:'👤' },
   ];
   if (isSuper) links.push({ hash:'#/admin', label:'Admin', emoji:'⚙️', special:true });
@@ -319,6 +455,7 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
               <span className="text-lg">{theme.emoji}</span>
               <span className="text-xs font-black" style={{color:theme.color}}>{theme.name}</span>
             </div>
+            <NotificationBell athlete={athlete}/>
             <button onClick={onLogout} className="px-3 py-1.5 rounded-lg text-xs bg-white/5 border border-white/10 hover:bg-white/10">Logout</button>
             <button onClick={()=>setMenuOpen(true)} className="md:hidden p-2 rounded-lg bg-white/5 border border-white/10">☰</button>
           </div>
@@ -1046,14 +1183,15 @@ function AdminPage() {
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[
-          {k:'reels',       label:'🎬 Reels Queue'},
-          {k:'payouts',     label:'💸 Payouts'},
-          {k:'athletes',    label:'👥 Atlete'},
-          {k:'links',       label:'🔗 Linkovi'},
-          {k:'settings',    label:'⚙️ Podešavanja'},
-          {k:'levels',      label:'🎖️ Nivoi'},
-          {k:'achievements',label:'🏆 Dostignuća'},
-          {k:'course',      label:'📚 Kurs CMS'},
+          {k:'reels',         label:'🎬 Reels Queue'},
+          {k:'payouts',       label:'💸 Payouts'},
+          {k:'athletes',      label:'👥 Atlete'},
+          {k:'notifications', label:'🔔 Notifikacije'},
+          {k:'links',         label:'🔗 Linkovi'},
+          {k:'settings',      label:'⚙️ Podešavanja'},
+          {k:'levels',        label:'🎖️ Nivoi'},
+          {k:'achievements',  label:'🏆 Dostignuća'},
+          {k:'course',        label:'📚 Kurs CMS'},
         ].map(t => (
           <button key={t.k} onClick={()=>setTab(t.k)}
             className={"px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap " + (tab===t.k ? 'bg-gold text-bg0' : 'glass text-white/70')}>
@@ -1065,6 +1203,7 @@ function AdminPage() {
       {tab==='reels' && <AdminReelsQueue/>}
       {tab==='payouts' && <AdminPayoutQueue/>}
       {tab==='athletes' && <AdminAthletes/>}
+      {tab==='notifications' && <AdminNotifications/>}
       {tab==='links' && <AdminLinks/>}
       {tab==='settings' && <AdminSettings/>}
       {tab==='levels' && <AdminLevels/>}
@@ -1082,15 +1221,29 @@ function AdminReelsQueue() {
     setReels(data||[]);
   }
   async function decide(id, status, reason=null) {
+    const reel = reels.find(r=>r.id===id);
     await supa.from('reels').update({ status, reviewed_at: new Date().toISOString(), reject_reason: reason }).eq('id', id);
     if (status === 'approved') {
-      // Dodaj earnings
-      const reel = reels.find(r=>r.id===id);
-      const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', 'recruit').maybeSingle();
+      // Dodaj earnings koristeci athlete-ov nivo
+      const { data: athleteRow } = await supa.from('athletes').select('level').eq('id', reel.athlete_id).maybeSingle();
+      const levelKey = athleteRow?.level || 'recruit';
+      const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', levelKey).maybeSingle();
       const reward = cfg?.reel_reward_cents || 30;
       await supa.from('earnings_ledger').insert({
         athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
         ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
+      });
+      // Notify atletu
+      await supa.from('notifications').insert({
+        athlete_id: reel.athlete_id, type:'reel_approved',
+        title: '✅ Reel odobren!', body: `Tvoj reel je odobren. +€${(reward/100).toFixed(2)} dodato na zaradu.`,
+        icon: '🎬', priority: 'high', action_url: '#/isplate'
+      });
+    } else if (status === 'rejected') {
+      await supa.from('notifications').insert({
+        athlete_id: reel.athlete_id, type:'reel_rejected',
+        title: '❌ Reel odbijen', body: reason || 'Tvoj reel ne ispunjava uslove.',
+        icon: '🎬', priority: 'normal', action_url: '#/reels'
       });
     }
     load();
@@ -1127,14 +1280,26 @@ function AdminPayoutQueue() {
     setItems(data||[]);
   }
   async function decide(id, status) {
+    const item = items.find(i=>i.id===id);
     const upd = { status, approved_at: new Date().toISOString() };
     if (status==='paid') upd.paid_at = new Date().toISOString();
     await supa.from('payout_requests').update(upd).eq('id', id);
-    if (status==='paid') {
+    if (status==='paid' && item) {
       // Mark earnings as paid
-      const item = items.find(i=>i.id===id);
       await supa.from('earnings_ledger').update({ status:'paid', payout_request_id: id, paid_at: new Date().toISOString() })
         .eq('athlete_id', item.athlete_id).eq('status','available').is('payout_request_id', null);
+      // Notify atletu
+      await supa.from('notifications').insert({
+        athlete_id: item.athlete_id, type:'payout_paid',
+        title: '💰 Isplata izvršena!', body: `Tvoja isplata od €${((item.amount_cents||0)/100).toFixed(2)} je poslata na tvoj račun.`,
+        icon: '💸', priority: 'high', action_url: '#/isplate'
+      });
+    } else if (status==='rejected' && item) {
+      await supa.from('notifications').insert({
+        athlete_id: item.athlete_id, type:'payout_rejected',
+        title: '❌ Isplata odbijena', body: 'Tvoj payout zahtev je odbijen. Kontaktiraj support.',
+        icon: '⚠️', priority: 'high', action_url: '#/isplate'
+      });
     }
     load();
   }
@@ -2253,6 +2418,270 @@ function LessonEditModal({ lesson, onClose, onSave }) {
   );
 }
 
+// =====================================================
+// === NOTIFICATIONS PAGE ===
+// =====================================================
+function NotificationsPage({ athlete }) {
+  const [list, setList] = useState([]);
+  const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{ if (athlete?.id) load(); }, [athlete?.id]);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supa.from('notifications').select('*').eq('athlete_id', athlete.id).order('created_at',{ascending:false}).limit(200);
+    setList(data||[]);
+    setLoading(false);
+  }
+  async function markAllRead() {
+    await supa.from('notifications').update({ read_at: new Date().toISOString() }).eq('athlete_id', athlete.id).is('read_at', null);
+    load();
+  }
+  async function markOne(id) {
+    await supa.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
+    load();
+  }
+  async function del(id) {
+    if (!confirm('Obrisati ovu notifikaciju?')) return;
+    await supa.from('notifications').delete().eq('id', id);
+    load();
+  }
+
+  const filtered = list.filter(n => {
+    if (filter === 'unread') return !n.read_at;
+    if (filter === 'urgent') return n.priority === 'urgent' || n.priority === 'high';
+    return true;
+  });
+  const unreadCount = list.filter(n => !n.read_at).length;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🔔 Notifikacije</h1>
+          <p className="text-sm text-white/60">{unreadCount} nepročitanih · {list.length} ukupno</p>
+        </div>
+        {unreadCount > 0 && <button onClick={markAllRead} className="px-4 py-2 rounded-xl bg-brand text-bg0 text-xs font-bold shrink-0">Označi sve pročitano</button>}
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[['all','Sve'],['unread','Nepročitane'],['urgent','Hitne']].map(([k,l]) => (
+          <button key={k} onClick={()=>setFilter(k)}
+            className={"px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap " + (filter===k ? 'bg-brand text-bg0' : 'glass text-white/70 hover:bg-white/10')}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-center py-10 text-white/50">Učitavam...</div>
+      ) : filtered.length === 0 ? (
+        <div className="glass rounded-2xl p-10 text-center text-white/60">
+          {filter==='unread'?'Sve pročitano. 👌':filter==='urgent'?'Nema hitnih.':'Nema notifikacija. 🌙'}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(n => (
+            <div key={n.id} className={"glass rounded-2xl p-4 flex items-start gap-3 " + (!n.read_at ? 'border border-brand/30 bg-brand/5' : '')}>
+              <div className="text-3xl shrink-0">{n.icon || (n.priority==='urgent'?'🚨':n.priority==='high'?'⚡':'🔔')}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className={"font-bold text-sm " + (!n.read_at ? 'text-white' : 'text-white/70')}>{n.title}</div>
+                  {n.priority === 'urgent' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-danger/20 text-danger font-black uppercase">Urgent</span>}
+                  {n.priority === 'high' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gold/20 text-gold font-black uppercase">High</span>}
+                </div>
+                {n.body && <div className="text-xs text-white/60 mt-1">{n.body}</div>}
+                <div className="text-[10px] text-white/40 mt-1">{fromNow(n.created_at)}</div>
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                {n.action_url && <a href={n.action_url} className="px-2 py-1 rounded bg-brand/15 text-brand text-[10px] font-bold">Otvori</a>}
+                {!n.read_at && <button onClick={()=>markOne(n.id)} className="px-2 py-1 rounded bg-white/5 text-[10px]">✓</button>}
+                <button onClick={()=>del(n.id)} className="px-2 py-1 rounded bg-danger/15 text-danger text-[10px]">Del</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: NOTIFICATION BROADCAST ===
+// =====================================================
+function AdminNotifications() {
+  const [audience, setAudience] = useState('all'); // all | level | specific
+  const [level, setLevel] = useState('recruit');
+  const [athleteIds, setAthleteIds] = useState([]);
+  const [athleteSearch, setAthleteSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [icon, setIcon] = useState('🔔');
+  const [priority, setPriority] = useState('normal');
+  const [actionUrl, setActionUrl] = useState('');
+  const [sending, setSending] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
+  const [recentCampaigns, setRecentCampaigns] = useState([]);
+
+  useEffect(()=>{ loadCampaigns(); }, []);
+
+  async function loadCampaigns() {
+    const { data } = await supa.from('notification_campaigns').select('*').order('created_at',{ascending:false}).limit(10);
+    setRecentCampaigns(data||[]);
+  }
+
+  async function searchAthletes() {
+    if (!athleteSearch || athleteSearch.length < 2) { setSearchResults([]); return; }
+    const { data } = await supa.from('athletes').select('id, level, profiles!athletes_id_fkey(full_name, email)').limit(10);
+    const q = athleteSearch.toLowerCase();
+    setSearchResults((data||[]).filter(a => {
+      const name = (a.profiles?.full_name||'').toLowerCase();
+      const email = (a.profiles?.email||'').toLowerCase();
+      return name.includes(q) || email.includes(q);
+    }));
+  }
+  useEffect(()=>{ const t = setTimeout(searchAthletes, 300); return () => clearTimeout(t); }, [athleteSearch]);
+
+  async function send() {
+    if (!title.trim()) { alert('Naslov obavezan'); return; }
+    setSending(true);
+
+    // Resolve target athletes
+    let targetIds = [];
+    if (audience === 'all') {
+      const { data } = await supa.from('athletes').select('id').eq('status','active');
+      targetIds = (data||[]).map(a => a.id);
+    } else if (audience === 'level') {
+      const { data } = await supa.from('athletes').select('id').eq('status','active').eq('level', level);
+      targetIds = (data||[]).map(a => a.id);
+    } else {
+      targetIds = athleteIds;
+    }
+
+    if (targetIds.length === 0) { setSending(false); alert('Nema ciljanih atleta.'); return; }
+    if (!confirm(`Poslati notifikaciju za ${targetIds.length} atleta?`)) { setSending(false); return; }
+
+    // Insert notifications batch
+    const rows = targetIds.map(id => ({
+      athlete_id: id,
+      type: 'admin_broadcast',
+      title, body, icon, priority,
+      action_url: actionUrl || null,
+    }));
+
+    // Batch insert u kockama od 500 (Supabase limit)
+    let total = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = rows.slice(i, i+500);
+      const { error } = await supa.from('notifications').insert(chunk);
+      if (error) { alert('Greška: ' + error.message); break; }
+      total += chunk.length;
+    }
+
+    // Sačuvaj kao campaign
+    await supa.from('notification_campaigns').insert({
+      name: title,
+      audience_query: audience === 'all' ? { kind:'all' } : audience === 'level' ? { kind:'level', level } : { kind:'specific', ids: targetIds },
+      custom_title: title, custom_body: body,
+      sent_at: new Date().toISOString(), sent_count: total,
+    });
+
+    setSending(false);
+    setLastResult({ count: total });
+    setTitle(''); setBody(''); setActionUrl('');
+    loadCampaigns();
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
+        🔔 Pošalji notifikaciju atletama. Stiže im real-time u portal + browser notification (ako su dozvolili).
+      </div>
+
+      {/* COMPOSE */}
+      <div className="glass-strong rounded-2xl p-5 space-y-4">
+        <div className="font-display font-bold text-base">📝 Nova notifikacija</div>
+
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-white/60 font-bold mb-2">Kome?</label>
+          <div className="flex gap-2 flex-wrap">
+            {[['all','Svi atleti'],['level','Po nivou'],['specific','Određene atlete']].map(([k,l]) => (
+              <button key={k} onClick={()=>setAudience(k)}
+                className={"px-4 py-2 rounded-xl text-xs font-bold " + (audience===k ? 'bg-brand text-bg0' : 'bg-white/5 text-white/70')}>{l}</button>
+            ))}
+          </div>
+          {audience === 'level' && (
+            <div className="mt-3">
+              <EditField label="Nivo" type="select" options={['recruit','pro','commando','elite']} value={level} onChange={setLevel}/>
+            </div>
+          )}
+          {audience === 'specific' && (
+            <div className="mt-3 space-y-2">
+              <input value={athleteSearch} onChange={e=>setAthleteSearch(e.target.value)} placeholder="Pretraga (ime/email)..."
+                className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/>
+              {searchResults.length > 0 && (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {searchResults.map(a => (
+                    <button key={a.id} onClick={()=>{ if (!athleteIds.includes(a.id)) setAthleteIds([...athleteIds, a.id]); setAthleteSearch(''); setSearchResults([]); }}
+                      className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs">
+                      <b>{a.profiles?.full_name || a.profiles?.email}</b> · <span className="text-white/50">{a.level}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {athleteIds.length > 0 && (
+                <div className="text-xs text-white/70">
+                  <b>Izabrano:</b> {athleteIds.length} atleta
+                  <button onClick={()=>setAthleteIds([])} className="ml-2 text-brand">[očisti]</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <EditField label="Naslov *" value={title} onChange={setTitle}/>
+        <EditField label="Tekst (opciono)" value={body} onChange={setBody}/>
+        <EditField label="Icon (emoji)" value={icon} onChange={setIcon}/>
+        <EditField label="Prioritet" type="select" options={['low','normal','high','urgent']} value={priority} onChange={setPriority}/>
+        <EditField label="Action URL (opciono, npr. #/kurs)" value={actionUrl} onChange={setActionUrl}/>
+
+        {lastResult && (
+          <div className="text-xs px-3 py-2 rounded-lg bg-lime/10 border border-lime/30 text-lime">
+            ✓ Poslato {lastResult.count} notifikacija
+          </div>
+        )}
+
+        <button onClick={send} disabled={sending || !title.trim()}
+          className="w-full py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
+          {sending ? 'Šaljem...' : '🚀 Pošalji notifikaciju'}
+        </button>
+      </div>
+
+      {/* HISTORY */}
+      <div className="glass rounded-2xl p-5">
+        <div className="font-display font-bold text-base mb-3">📜 Skorije kampanje</div>
+        {recentCampaigns.length === 0 ? (
+          <div className="text-center py-6 text-sm text-white/50">Nema poslatih kampanja.</div>
+        ) : (
+          <div className="space-y-2">
+            {recentCampaigns.map(c => (
+              <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
+                <div className="min-w-0">
+                  <div className="font-bold text-sm truncate">{c.name}</div>
+                  <div className="text-[10px] text-white/40">{fromNow(c.created_at)} · {c.audience_query?.kind || '—'}</div>
+                </div>
+                <div className="text-xs text-lime font-bold shrink-0">{c.sent_count || 0} 📤</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // === APP ROOT ===
 function App() {
   const hash = useHash();
@@ -2295,6 +2724,7 @@ function App() {
     if (route === '/dostignuca') return <AchievementsPage athlete={athlete}/>;
     if (route === '/rang') return <LeaderboardPage athlete={athlete}/>;
     if (route === '/isplate') return <IsplatePage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
+    if (route === '/notifikacije') return <NotificationsPage athlete={athlete}/>;
     if (route === '/profil') return <ProfilPage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
     if (route === '/admin' && profile?.role === 'super_admin') return <AdminPage/>;
     return <Dashboard athlete={athlete} profile={profile}/>;
