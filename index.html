@@ -189,7 +189,7 @@ function LoginPage() {
     setLoading(true); setErr(null);
     const { error } = await supa.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + '#/portal' }
+      options: { emailRedirectTo: window.location.origin + '/' }
     });
     setLoading(false);
     if (error) setErr(error.message);
@@ -299,6 +299,16 @@ function App() {
     var el = document.getElementById('loading');
     if (el && !loading) el.style.display='none';
   }, [loading]);
+
+  // Posle login-a: ako je user na landing (#/), automatski u portal
+  useEffect(() => {
+    if (!loading && user) {
+      const route = (window.location.hash || '#/').replace('#', '').split('?')[0] || '/';
+      if (route === '/' || route === '/login') {
+        window.location.hash = '#/portal';
+      }
+    }
+  }, [user, loading]);
 
   // Konfiguracija nedostaje
   if (!supa) {
