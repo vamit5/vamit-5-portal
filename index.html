@@ -555,7 +555,7 @@ function Dashboard({ athlete, profile }) {
 async function runAchievementEngine(athleteId, snapshot) {
   // snapshot: { reels_total, sales_total, streak }
   const [{ data: allAch }, { data: unlocked }] = await Promise.all([
-    supa.from('achievements').select('*').eq('is_active', true),
+    supa.from('achievements').select('*').eq('active', true),
     supa.from('athlete_achievements').select('achievement_id').eq('athlete_id', athleteId)
   ]);
   const unlockedSet = new Set((unlocked||[]).map(x => x.achievement_id));
@@ -595,7 +595,7 @@ function AchievementUnlockModal({ ach, onClose }) {
     <div className="fixed inset-0 z-[60] bg-bg0/95 backdrop-blur-xl flex items-center justify-center p-5 animate-fadein" onClick={onClose}>
       <div className="glass-strong rounded-3xl p-8 max-w-sm w-full text-center border-2 border-gold/60" style={{boxShadow:'0 0 80px rgba(255,194,75,0.4)'}}>
         <div className="text-xs text-gold uppercase tracking-[0.3em] font-black mb-2">🎉 Dostignuće Otključano</div>
-        <div className="text-7xl my-4">{ach.icon || '🏆'}</div>
+        <div className="text-7xl my-4">{ach.icon_emoji || ach.icon || '🏆'}</div>
         <h2 className="font-display font-black text-2xl text-gold mb-2">{ach.name}</h2>
         <p className="text-sm text-white/70 mb-4">{ach.description}</p>
         {ach.xp_reward && <div className="text-base font-black text-brand mb-5">+{ach.xp_reward} XP</div>}
@@ -1411,7 +1411,7 @@ function AchievementsPage({ athlete }) {
     setLoading(true);
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
     const [allAch, mine, reels, sales, dates] = await Promise.all([
-      supa.from('achievements').select('*').eq('is_active', true).order('xp_reward',{ascending:true}),
+      supa.from('achievements').select('*').eq('active', true).order('xp_reward',{ascending:true}),
       supa.from('athlete_achievements').select('achievement_id, unlocked_at').eq('athlete_id', athlete.id),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
@@ -1489,7 +1489,7 @@ function AchievementsPage({ athlete }) {
             const progress = getProgress(a.requirement_json, snap);
             return (
               <div key={a.id} className={"glass rounded-2xl p-4 text-center " + (isUnlocked ? 'border border-gold/40' : 'opacity-60')}>
-                <div className={"text-5xl mb-2 " + (isUnlocked ? '' : 'grayscale')}>{a.icon || '🏆'}</div>
+                <div className={"text-5xl mb-2 " + (isUnlocked ? '' : 'grayscale')}>{a.icon_emoji || a.icon || '🏆'}</div>
                 <div className={"font-display font-black text-sm mb-1 " + (isUnlocked ? 'text-gold' : 'text-white/70')}>{a.name}</div>
                 <div className="text-[11px] text-white/50 mb-2 line-clamp-2">{a.description}</div>
                 {a.xp_reward && <div className="text-xs font-bold text-brand mb-2">+{a.xp_reward} XP</div>}
@@ -1802,14 +1802,17 @@ function AdminSettings() {
 // =====================================================
 // === ADMIN: LEVEL CONFIGS ===
 // =====================================================
+const LEVEL_DISPLAY_ORDER = { recruit:1, pro:2, commando:3, elite:4 };
+
 function AdminLevels() {
   const [levels, setLevels] = useState([]);
   const [editing, setEditing] = useState(null);
 
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('level_configs').select('*').order('level_order');
-    setLevels(data||[]);
+    const { data } = await supa.from('level_configs').select('*');
+    const sorted = (data||[]).slice().sort((a,b) => (LEVEL_DISPLAY_ORDER[a.level_key]||99) - (LEVEL_DISPLAY_ORDER[b.level_key]||99));
+    setLevels(sorted);
   }
 
   return (
@@ -1819,12 +1822,12 @@ function AdminLevels() {
       </div>
       <div className="grid sm:grid-cols-2 gap-4">
         {levels.map(lv => {
-          const theme = LEVEL_THEME[lv.level_key];
+          const theme = LEVEL_THEME[lv.level_key] || { color:'#fff', emoji:'⭐', name: (lv.name||lv.level_key||'').toUpperCase() };
           return (
             <div key={lv.level_key} className="glass-strong rounded-2xl p-5 border" style={{borderColor: theme.color+'40'}}>
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-white/50">Level {lv.level_order}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-white/50">Level {LEVEL_DISPLAY_ORDER[lv.level_key]||'—'}</div>
                   <div className="font-display font-black text-xl" style={{color: theme.color}}>{theme.emoji} {theme.name}</div>
                 </div>
                 <button onClick={()=>setEditing(lv)} className="px-3 py-1.5 rounded-lg bg-brand/15 text-brand text-xs font-bold">✏️ Edit</button>
@@ -1919,7 +1922,7 @@ function AdminAchievements() {
     load();
   }
   async function toggleActive(ach) {
-    await supa.from('achievements').update({ is_active: !ach.is_active }).eq('id', ach.id);
+    await supa.from('achievements').update({ active: !ach.active }).eq('id', ach.id);
     load();
   }
 
@@ -1927,15 +1930,15 @@ function AdminAchievements() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-xs text-white/70">🏆 {list.length} dostignuća</div>
-        <button onClick={()=>setEditing({ name:'', description:'', icon:'🏆', xp_reward:50, requirement_json:{kind:'count', entity:'reels', min:10}, is_active:true })}
+        <button onClick={()=>setEditing({ name:'', description:'', icon_emoji:'🏆', xp_reward:50, requirement_json:{kind:'count', entity:'reels', min:10}, active:true })}
           className="px-4 py-2 rounded-xl bg-brand text-bg0 text-xs font-bold">+ Novo</button>
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         {list.map(a => (
-          <div key={a.id} className={"glass rounded-2xl p-4 " + (a.is_active ? '' : 'opacity-50')}>
+          <div key={a.id} className={"glass rounded-2xl p-4 " + (a.active ? '' : 'opacity-50')}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="text-3xl">{a.icon || '🏆'}</div>
+                <div className="text-3xl">{a.icon_emoji || a.icon || '🏆'}</div>
                 <div className="min-w-0">
                   <div className="font-bold text-sm truncate">{a.name}</div>
                   <div className="text-[11px] text-white/50 truncate">{a.description}</div>
@@ -1944,7 +1947,7 @@ function AdminAchievements() {
               </div>
               <div className="flex flex-col gap-1 shrink-0">
                 <button onClick={()=>setEditing(a)} className="px-2 py-1 rounded-md bg-brand/15 text-brand text-[10px] font-bold">Edit</button>
-                <button onClick={()=>toggleActive(a)} className="px-2 py-1 rounded-md bg-white/5 text-[10px] font-bold">{a.is_active?'Hide':'Show'}</button>
+                <button onClick={()=>toggleActive(a)} className="px-2 py-1 rounded-md bg-white/5 text-[10px] font-bold">{a.active?'Hide':'Show'}</button>
                 <button onClick={()=>del(a.id)} className="px-2 py-1 rounded-md bg-danger/15 text-danger text-[10px] font-bold">Del</button>
               </div>
             </div>
@@ -1962,12 +1965,12 @@ function AchievementEditModal({ ach, onClose, onSave }) {
     code: ach.code||'',
     name: ach.name||'',
     description: ach.description||'',
-    icon: ach.icon||'🏆',
+    icon: ach.icon_emoji || ach.icon || '🏆',
     xp_reward: (ach.xp_reward||0).toString(),
     kind: ach.requirement_json?.kind || 'count',
     entity: ach.requirement_json?.entity || 'reels',
     min: (ach.requirement_json?.min||1).toString(),
-    is_active: ach.is_active !== false,
+    active: ach.active !== false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -1980,10 +1983,10 @@ function AchievementEditModal({ ach, onClose, onSave }) {
       code: form.code || (form.name||'ach').toLowerCase().replace(/[^a-z0-9]+/g,'_'),
       name: form.name,
       description: form.description,
-      icon: form.icon,
+      icon_emoji: form.icon,
       xp_reward: parseInt(form.xp_reward)||0,
       requirement_json: req,
-      is_active: form.is_active,
+      active: form.active,
     };
     const { error } = isNew
       ? await supa.from('achievements').insert(payload)
@@ -2012,7 +2015,7 @@ function AchievementEditModal({ ach, onClose, onSave }) {
           )}
           <EditField label="Minimum (count ili streak dana)" value={form.min} onChange={v=>setForm({...form, min:v})}/>
           <div className="flex items-center gap-2">
-            <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form, is_active:e.target.checked})}/>
+            <input type="checkbox" checked={form.active} onChange={e=>setForm({...form, active:e.target.checked})}/>
             <span className="text-sm">Aktivno</span>
           </div>
         </div>
@@ -2028,50 +2031,109 @@ function AchievementEditModal({ ach, onClose, onSave }) {
 }
 
 // =====================================================
-// === ADMIN: KURS CMS ===
+// === ADMIN: KURS CMS (Modules + Lessons) ===
 // =====================================================
+function slugify(s) {
+  return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'item';
+}
+
 function AdminCourse() {
   const [modules, setModules] = useState([]);
-  const [editing, setEditing] = useState(null);
+  const [lessonsByMod, setLessonsByMod] = useState({});
+  const [editingMod, setEditingMod] = useState(null);
+  const [editingLesson, setEditingLesson] = useState(null);
+  const [expanded, setExpanded] = useState({});
 
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('course_modules').select('*').order('module_order');
-    setModules(data||[]);
+    const { data: mods } = await supa.from('course_modules').select('*').order('order_idx');
+    const { data: lessons } = await supa.from('course_lessons').select('*').order('order_idx');
+    setModules(mods||[]);
+    const byMod = {};
+    (lessons||[]).forEach(l => { (byMod[l.module_id] = byMod[l.module_id]||[]).push(l); });
+    setLessonsByMod(byMod);
   }
-  async function del(id) {
-    if (!confirm('Obrisati ovaj modul?')) return;
+  async function delMod(id) {
+    if (!confirm('Obrisati modul i sve njegove lekcije?')) return;
     await supa.from('course_modules').delete().eq('id', id);
+    load();
+  }
+  async function delLesson(id) {
+    if (!confirm('Obrisati lekciju?')) return;
+    await supa.from('course_lessons').delete().eq('id', id);
     load();
   }
 
   return (
     <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
+        📚 Moduli sa lekcijama (YouTube unlisted videi). Klikni modul da prosiris i menjas lekcije.
+      </div>
       <div className="flex items-center justify-between">
-        <div className="text-xs text-white/70">📚 {modules.length} modula</div>
-        <button onClick={()=>setEditing({ title:'', description:'', module_order: (modules.length+1), youtube_url:'', is_published:true })}
+        <div className="text-xs text-white/70">{modules.length} modula</div>
+        <button onClick={()=>setEditingMod({ name:'', description:'', slug:'', order_idx: modules.length+1, status:'published', level_required:'recruit' })}
           className="px-4 py-2 rounded-xl bg-brand text-bg0 text-xs font-bold">+ Novi modul</button>
       </div>
       <div className="space-y-3">
-        {modules.map(m => (
-          <div key={m.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-white/40 font-mono">#{m.module_order}</div>
-                <div className="font-bold text-sm truncate">{m.title}</div>
-                {!m.is_published && <span className="text-[10px] text-gold">DRAFT</span>}
+        {modules.map(m => {
+          const lessons = lessonsByMod[m.id] || [];
+          const isExpanded = !!expanded[m.id];
+          return (
+            <div key={m.id} className="glass rounded-2xl overflow-hidden">
+              <div className="p-4 flex items-center justify-between gap-3">
+                <button onClick={()=>setExpanded({...expanded, [m.id]: !isExpanded})} className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                  <div className="text-xl">{isExpanded?'▼':'▶'}</div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-white/40 font-mono">#{m.order_idx}</div>
+                      <div className="font-bold text-sm truncate">{m.name}</div>
+                      {m.status==='draft' && <span className="text-[10px] text-gold">DRAFT</span>}
+                      <span className="text-[10px] text-white/50">({lessons.length} lekcija)</span>
+                    </div>
+                    <div className="text-[11px] text-white/50 truncate mt-0.5">{m.description}</div>
+                  </div>
+                </button>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <button onClick={()=>setEditingMod(m)} className="px-2 py-1 rounded-md bg-brand/15 text-brand text-[10px] font-bold">Edit</button>
+                  <button onClick={()=>delMod(m.id)} className="px-2 py-1 rounded-md bg-danger/15 text-danger text-[10px] font-bold">Del</button>
+                </div>
               </div>
-              <div className="text-[11px] text-white/50 truncate mt-0.5">{m.description}</div>
-              {m.youtube_url && <a href={m.youtube_url} target="_blank" rel="noopener" className="text-[10px] text-brand font-mono break-all">{m.youtube_url}</a>}
+              {isExpanded && (
+                <div className="border-t border-white/5 bg-bg0/30 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Lekcije</div>
+                    <button onClick={()=>setEditingLesson({ module_id: m.id, name:'', description:'', slug:'', youtube_url:'', order_idx: lessons.length+1, status:'published' })}
+                      className="px-3 py-1 rounded-lg bg-brand/20 text-brand text-[10px] font-bold">+ Nova lekcija</button>
+                  </div>
+                  {lessons.length === 0 ? (
+                    <div className="text-center py-3 text-xs text-white/40">Nema lekcija. Dodaj prvu.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {lessons.map(l => (
+                        <div key={l.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white/5">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="text-[10px] text-white/40 font-mono shrink-0">#{l.order_idx}</div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-xs truncate">{l.name}</div>
+                              {l.youtube_url && <div className="text-[10px] text-brand font-mono truncate">{l.youtube_url}</div>}
+                            </div>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={()=>setEditingLesson(l)} className="px-2 py-1 rounded bg-brand/15 text-brand text-[10px] font-bold">Edit</button>
+                            <button onClick={()=>delLesson(l.id)} className="px-2 py-1 rounded bg-danger/15 text-danger text-[10px] font-bold">Del</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex flex-col gap-1 shrink-0">
-              <button onClick={()=>setEditing(m)} className="px-2 py-1 rounded-md bg-brand/15 text-brand text-[10px] font-bold">Edit</button>
-              <button onClick={()=>del(m.id)} className="px-2 py-1 rounded-md bg-danger/15 text-danger text-[10px] font-bold">Del</button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      {editing && <ModuleEditModal mod={editing} onClose={()=>setEditing(null)} onSave={()=>{load(); setEditing(null);}}/>}
+      {editingMod && <ModuleEditModal mod={editingMod} onClose={()=>setEditingMod(null)} onSave={()=>{load(); setEditingMod(null);}}/>}
+      {editingLesson && <LessonEditModal lesson={editingLesson} onClose={()=>setEditingLesson(null)} onSave={()=>{load(); setEditingLesson(null);}}/>}
     </div>
   );
 }
@@ -2079,22 +2141,25 @@ function AdminCourse() {
 function ModuleEditModal({ mod, onClose, onSave }) {
   const isNew = !mod.id;
   const [form, setForm] = useState({
-    title: mod.title||'',
+    name: mod.name||'',
     description: mod.description||'',
-    module_order: (mod.module_order||1).toString(),
-    youtube_url: mod.youtube_url||'',
-    is_published: mod.is_published !== false,
+    slug: mod.slug||'',
+    order_idx: (mod.order_idx||1).toString(),
+    status: mod.status || 'published',
+    level_required: mod.level_required || 'recruit',
   });
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
+    const slug = form.slug || slugify(form.name);
     const payload = {
-      title: form.title,
+      name: form.name,
       description: form.description,
-      module_order: parseInt(form.module_order)||1,
-      youtube_url: form.youtube_url,
-      is_published: form.is_published,
+      slug,
+      order_idx: parseInt(form.order_idx)||1,
+      status: form.status,
+      level_required: form.level_required,
     };
     const { error } = isNew
       ? await supa.from('course_modules').insert(payload)
@@ -2112,14 +2177,70 @@ function ModuleEditModal({ mod, onClose, onSave }) {
           <button onClick={onClose} className="text-2xl text-white/60">✕</button>
         </div>
         <div className="space-y-3">
-          <EditField label="Naslov" value={form.title} onChange={v=>setForm({...form, title:v})}/>
+          <EditField label="Naslov modula" value={form.name} onChange={v=>setForm({...form, name:v, slug: form.slug || slugify(v)})}/>
+          <EditField label="Slug (URL-friendly, auto)" value={form.slug} onChange={v=>setForm({...form, slug:v})} mono/>
           <EditField label="Opis" value={form.description} onChange={v=>setForm({...form, description:v})}/>
-          <EditField label="Redni broj" value={form.module_order} onChange={v=>setForm({...form, module_order:v})}/>
+          <EditField label="Redni broj" value={form.order_idx} onChange={v=>setForm({...form, order_idx:v})}/>
+          <EditField label="Status" type="select" options={['draft','published','archived']} value={form.status} onChange={v=>setForm({...form, status:v})}/>
+          <EditField label="Min nivo da bi atleta videla" type="select" options={['recruit','pro','commando','elite']} value={form.level_required} onChange={v=>setForm({...form, level_required:v})}/>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
+            {saving?'Snimam...':'💾 Sačuvaj'}
+          </button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LessonEditModal({ lesson, onClose, onSave }) {
+  const isNew = !lesson.id;
+  const [form, setForm] = useState({
+    name: lesson.name||'',
+    description: lesson.description||'',
+    slug: lesson.slug||'',
+    youtube_url: lesson.youtube_url||'',
+    order_idx: (lesson.order_idx||1).toString(),
+    status: lesson.status || 'published',
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const slug = form.slug || slugify(form.name);
+    const payload = {
+      module_id: lesson.module_id,
+      name: form.name,
+      description: form.description,
+      slug,
+      youtube_url: form.youtube_url,
+      order_idx: parseInt(form.order_idx)||1,
+      status: form.status,
+    };
+    const { error } = isNew
+      ? await supa.from('course_lessons').insert(payload)
+      : await supa.from('course_lessons').update(payload).eq('id', lesson.id);
+    setSaving(false);
+    if (error) alert('Greška: ' + error.message);
+    else onSave();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-bg0/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="glass-strong rounded-2xl max-w-md w-full p-6 my-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="font-display font-black text-xl">{isNew?'Nova lekcija':'Edit lekcija'}</h3>
+          <button onClick={onClose} className="text-2xl text-white/60">✕</button>
+        </div>
+        <div className="space-y-3">
+          <EditField label="Naslov lekcije" value={form.name} onChange={v=>setForm({...form, name:v, slug: form.slug || slugify(v)})}/>
+          <EditField label="Slug (URL-friendly, auto)" value={form.slug} onChange={v=>setForm({...form, slug:v})} mono/>
+          <EditField label="Opis" value={form.description} onChange={v=>setForm({...form, description:v})}/>
           <EditField label="YouTube URL (unlisted)" value={form.youtube_url} onChange={v=>setForm({...form, youtube_url:v})} mono/>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" checked={form.is_published} onChange={e=>setForm({...form, is_published:e.target.checked})}/>
-            <span className="text-sm">Objavljeno</span>
-          </div>
+          <EditField label="Redni broj" value={form.order_idx} onChange={v=>setForm({...form, order_idx:v})}/>
+          <EditField label="Status" type="select" options={['draft','published','archived']} value={form.status} onChange={v=>setForm({...form, status:v})}/>
         </div>
         <div className="flex gap-2 mt-5">
           <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
