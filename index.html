@@ -1040,15 +1040,20 @@ function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">⚙️ Super Admin</h1>
-        <p className="text-sm text-white/60">Mini admin za odobravanje. Pun admin panel dolazi u Fazi 3.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">⚙️ Super Admin Panel</h1>
+        <p className="text-sm text-white/60">Edit sve. Production-ready kontrole.</p>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[
-          {k:'reels', label:'🎬 Reels queue'},
-          {k:'payouts', label:'💸 Payout queue'},
-          {k:'athletes', label:'👥 Atlete'},
+          {k:'reels',       label:'🎬 Reels Queue'},
+          {k:'payouts',     label:'💸 Payouts'},
+          {k:'athletes',    label:'👥 Atlete'},
+          {k:'links',       label:'🔗 Linkovi'},
+          {k:'settings',    label:'⚙️ Podešavanja'},
+          {k:'levels',      label:'🎖️ Nivoi'},
+          {k:'achievements',label:'🏆 Dostignuća'},
+          {k:'course',      label:'📚 Kurs CMS'},
         ].map(t => (
           <button key={t.k} onClick={()=>setTab(t.k)}
             className={"px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap " + (tab===t.k ? 'bg-gold text-bg0' : 'glass text-white/70')}>
@@ -1060,6 +1065,11 @@ function AdminPage() {
       {tab==='reels' && <AdminReelsQueue/>}
       {tab==='payouts' && <AdminPayoutQueue/>}
       {tab==='athletes' && <AdminAthletes/>}
+      {tab==='links' && <AdminLinks/>}
+      {tab==='settings' && <AdminSettings/>}
+      {tab==='levels' && <AdminLevels/>}
+      {tab==='achievements' && <AdminAchievements/>}
+      {tab==='course' && <AdminCourse/>}
     </div>
   );
 }
@@ -1630,6 +1640,494 @@ function LeaderboardPage({ athlete }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: LINKOVI (URL editor za sve buttone) ===
+// =====================================================
+const URL_SETTINGS = [
+  { key:'rewardful_base_url', label:'Rewardful Base URL', placeholder:'https://vamit-5-2.getrewardful.com', help:'Bazni URL koji se koristi za sve atlete linkove' },
+  { key:'application_form_url', label:'Application Form URL', placeholder:'https://forms.google.com/...', help:'Link na formu za prijavu novih atleta' },
+  { key:'contact_email', label:'Kontakt Email', placeholder:'info@vamit-5.com' },
+  { key:'support_email', label:'Support Email', placeholder:'support@vamit-5.com' },
+  { key:'whatsapp_url', label:'WhatsApp Grupa URL', placeholder:'https://chat.whatsapp.com/...' },
+  { key:'instagram_url', label:'Instagram URL', placeholder:'https://instagram.com/vamit5' },
+  { key:'tiktok_url', label:'TikTok URL', placeholder:'https://tiktok.com/@vamit5' },
+  { key:'youtube_url', label:'YouTube URL', placeholder:'https://youtube.com/@vamit5' },
+  { key:'main_landing_url', label:'Glavni sajt URL', placeholder:'https://vamit-5.com' },
+  { key:'app_download_ios_url', label:'iOS App Download URL', placeholder:'https://apps.apple.com/...' },
+  { key:'app_download_android_url', label:'Android App Download URL', placeholder:'https://play.google.com/...' },
+  { key:'terms_url', label:'Terms of Service URL' },
+  { key:'privacy_url', label:'Privacy Policy URL' },
+  { key:'stripe_membership_link', label:'Stripe Membership Payment Link' },
+  { key:'shop_url', label:'Shop URL' },
+];
+
+function AdminLinks() {
+  const [settings, setSettings] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savedKey, setSavedKey] = useState(null);
+
+  useEffect(()=>{ load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    const keys = URL_SETTINGS.map(s => s.key);
+    const { data } = await supa.from('settings').select('key, value').in('key', keys);
+    const map = {};
+    (data||[]).forEach(r => { map[r.key] = typeof r.value === 'string' ? r.value : (r.value?.v ?? JSON.stringify(r.value)); });
+    setSettings(map);
+    setLoading(false);
+  }
+
+  async function saveSetting(key, value) {
+    const { error } = await supa.from('settings').upsert({ key, value: value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (!error) {
+      setSavedKey(key);
+      setTimeout(()=>setSavedKey(null), 1500);
+    } else {
+      alert('Greška: ' + error.message);
+    }
+  }
+
+  if (loading) return <div className="text-white/50 text-center py-10">Učitavam...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
+        ℹ️ Ovde menjaš URL-ove SVIH dugmadi/linkova na portalu. Promene su odmah aktivne za sve atlete. Sve se čuva u <code>settings</code> tabeli.
+      </div>
+      {URL_SETTINGS.map(s => (
+        <SettingRow
+          key={s.key}
+          setting={s}
+          value={settings[s.key]||''}
+          saved={savedKey===s.key}
+          onChange={v=>setSettings({...settings, [s.key]:v})}
+          onSave={()=>saveSetting(s.key, settings[s.key]||'')}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SettingRow({ setting, value, saved, onChange, onSave }) {
+  return (
+    <div className="glass rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="font-bold text-sm">{setting.label}</div>
+          <div className="text-[10px] text-white/40 font-mono">{setting.key}</div>
+        </div>
+        <button onClick={onSave}
+          className={"shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold " + (saved ? 'bg-lime text-bg0' : 'bg-brand text-bg0')}>
+          {saved ? '✓ Sačuvano' : 'Sačuvaj'}
+        </button>
+      </div>
+      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={setting.placeholder||''}
+        className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/>
+      {setting.help && <div className="text-[11px] text-white/50 mt-1.5">{setting.help}</div>}
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: PODEŠAVANJA (svi key/value) ===
+// =====================================================
+const GENERAL_SETTINGS = [
+  { key:'min_payout_cents', label:'Min isplata (centi)', placeholder:'5000', help:'5000 = 50 EUR' },
+  { key:'payout_processing_days', label:'Dana za obradu isplate', placeholder:'7' },
+  { key:'reel_pending_days', label:'Dana dok reel pending → available', placeholder:'14' },
+  { key:'sale_pending_days', label:'Dana dok sale pending → available (Stripe refund period)', placeholder:'30' },
+  { key:'monthly_target_reels', label:'Mesečna meta reels po atleti', placeholder:'30' },
+  { key:'default_currency', label:'Valuta', placeholder:'EUR' },
+  { key:'season_xp_reset', label:'Reset XP po sezoni (true/false)', placeholder:'false' },
+  { key:'maintenance_mode', label:'Maintenance mode (true/false)', placeholder:'false' },
+  { key:'allow_new_signups', label:'Dozvoli nove registracije (true/false)', placeholder:'true' },
+  { key:'platform_name', label:'Ime platforme', placeholder:'VAMIT-5 Athlete Portal' },
+  { key:'support_response_time', label:'Support response time (npr. "24h")', placeholder:'24h' },
+  { key:'achievement_unlock_xp_multiplier', label:'XP multiplier za dostignuća', placeholder:'1' },
+  { key:'streak_bonus_threshold', label:'Streak bonus prag (dana)', placeholder:'7' },
+  { key:'streak_bonus_xp', label:'Streak bonus XP', placeholder:'50' },
+];
+
+function AdminSettings() {
+  const [settings, setSettings] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savedKey, setSavedKey] = useState(null);
+
+  useEffect(()=>{ load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    const keys = GENERAL_SETTINGS.map(s => s.key);
+    const { data } = await supa.from('settings').select('key, value').in('key', keys);
+    const map = {};
+    (data||[]).forEach(r => { map[r.key] = typeof r.value === 'string' ? r.value : (r.value?.v ?? JSON.stringify(r.value)); });
+    setSettings(map);
+    setLoading(false);
+  }
+
+  async function saveSetting(key, value) {
+    const { error } = await supa.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (!error) {
+      setSavedKey(key);
+      setTimeout(()=>setSavedKey(null), 1500);
+    } else alert('Greška: ' + error.message);
+  }
+
+  if (loading) return <div className="text-white/50 text-center py-10">Učitavam...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-gold/20">
+        ⚠️ Globalna podešavanja platforme. Promene su odmah aktivne. Budi pažljiv.
+      </div>
+      {GENERAL_SETTINGS.map(s => (
+        <SettingRow
+          key={s.key}
+          setting={s}
+          value={settings[s.key]||''}
+          saved={savedKey===s.key}
+          onChange={v=>setSettings({...settings, [s.key]:v})}
+          onSave={()=>saveSetting(s.key, settings[s.key]||'')}
+        />
+      ))}
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: LEVEL CONFIGS ===
+// =====================================================
+function AdminLevels() {
+  const [levels, setLevels] = useState([]);
+  const [editing, setEditing] = useState(null);
+
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    const { data } = await supa.from('level_configs').select('*').order('level_order');
+    setLevels(data||[]);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
+        🎖️ Konfiguracija nivoa: provizija, reel nagrada, uslovi za prelazak.
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {levels.map(lv => {
+          const theme = LEVEL_THEME[lv.level_key];
+          return (
+            <div key={lv.level_key} className="glass-strong rounded-2xl p-5 border" style={{borderColor: theme.color+'40'}}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-white/50">Level {lv.level_order}</div>
+                  <div className="font-display font-black text-xl" style={{color: theme.color}}>{theme.emoji} {theme.name}</div>
+                </div>
+                <button onClick={()=>setEditing(lv)} className="px-3 py-1.5 rounded-lg bg-brand/15 text-brand text-xs font-bold">✏️ Edit</button>
+              </div>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between"><span className="text-white/50">Provizija:</span><b style={{color:theme.color}}>{Math.round((lv.sales_commission_pct||0)*100)}%</b></div>
+                <div className="flex justify-between"><span className="text-white/50">Reel reward:</span><b>€{((lv.reel_reward_cents||0)/100).toFixed(2)}</b></div>
+                <div className="flex justify-between"><span className="text-white/50">Min sales za promotion:</span><b>{lv.requirements_json?.sales_total || '—'}</b></div>
+                <div className="flex justify-between"><span className="text-white/50">Min reels (total):</span><b>{lv.requirements_json?.reels_total || '—'}</b></div>
+                <div className="flex justify-between"><span className="text-white/50">Mesecni minimum:</span><b>{lv.monthly_threshold_json?.reels_30d || lv.monthly_threshold_json?.reels_per_month || '—'}</b></div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {editing && <LevelEditModal level={editing} onClose={()=>setEditing(null)} onSave={()=>{load(); setEditing(null);}}/>}
+    </div>
+  );
+}
+
+function LevelEditModal({ level, onClose, onSave }) {
+  const [form, setForm] = useState({
+    sales_commission_pct: ((level.sales_commission_pct||0)*100).toString(),
+    reel_reward_cents: (level.reel_reward_cents||0).toString(),
+    req_sales: (level.requirements_json?.sales_total||'').toString(),
+    req_reels_total: (level.requirements_json?.reels_total||'').toString(),
+    req_reels_month: (level.requirements_json?.reels_qualifying_month||'').toString(),
+    monthly_reels: (level.monthly_threshold_json?.reels_30d || level.monthly_threshold_json?.reels_per_month||'').toString(),
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const updates = {
+      sales_commission_pct: parseFloat(form.sales_commission_pct)/100 || 0,
+      reel_reward_cents: parseInt(form.reel_reward_cents)||0,
+      requirements_json: {
+        ...(form.req_sales ? { sales_total: parseInt(form.req_sales)||0 } : {}),
+        ...(form.req_reels_total ? { reels_total: parseInt(form.req_reels_total)||0 } : {}),
+        ...(form.req_reels_month ? { reels_qualifying_month: parseInt(form.req_reels_month)||0 } : {}),
+      },
+      monthly_threshold_json: form.monthly_reels ? { reels_30d: parseInt(form.monthly_reels)||0 } : {},
+    };
+    const { error } = await supa.from('level_configs').update(updates).eq('level_key', level.level_key);
+    setSaving(false);
+    if (error) alert('Greška: ' + error.message);
+    else onSave();
+  }
+
+  const theme = LEVEL_THEME[level.level_key];
+  return (
+    <div className="fixed inset-0 z-50 bg-bg0/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="glass-strong rounded-2xl max-w-md w-full p-6 my-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="font-display font-black text-xl" style={{color:theme.color}}>{theme.emoji} {theme.name}</h3>
+          <button onClick={onClose} className="text-2xl text-white/60">✕</button>
+        </div>
+        <div className="space-y-3">
+          <EditField label="Provizija (%)" value={form.sales_commission_pct} onChange={v=>setForm({...form, sales_commission_pct:v})}/>
+          <EditField label="Reel nagrada (centi, npr. 30 = 0.30 EUR)" value={form.reel_reward_cents} onChange={v=>setForm({...form, reel_reward_cents:v})}/>
+          <EditField label="Min prodaja za prelazak na sledeci nivo" value={form.req_sales} onChange={v=>setForm({...form, req_sales:v})}/>
+          <EditField label="Min reels (total) za prelazak" value={form.req_reels_total} onChange={v=>setForm({...form, req_reels_total:v})}/>
+          <EditField label="Min kvalifikujucih reels (mesecno)" value={form.req_reels_month} onChange={v=>setForm({...form, req_reels_month:v})}/>
+          <EditField label="Mesecni minimum reels (da ostane na nivou)" value={form.monthly_reels} onChange={v=>setForm({...form, monthly_reels:v})}/>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
+            {saving?'Snimam...':'💾 Sačuvaj'}
+          </button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: ACHIEVEMENTS CRUD ===
+// =====================================================
+function AdminAchievements() {
+  const [list, setList] = useState([]);
+  const [editing, setEditing] = useState(null);
+
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    const { data } = await supa.from('achievements').select('*').order('xp_reward');
+    setList(data||[]);
+  }
+  async function del(id) {
+    if (!confirm('Obrisati ovo dostignuće? Postojeća otključanja ostaju.')) return;
+    await supa.from('achievements').delete().eq('id', id);
+    load();
+  }
+  async function toggleActive(ach) {
+    await supa.from('achievements').update({ is_active: !ach.is_active }).eq('id', ach.id);
+    load();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-white/70">🏆 {list.length} dostignuća</div>
+        <button onClick={()=>setEditing({ name:'', description:'', icon:'🏆', xp_reward:50, requirement_json:{kind:'count', entity:'reels', min:10}, is_active:true })}
+          className="px-4 py-2 rounded-xl bg-brand text-bg0 text-xs font-bold">+ Novo</button>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {list.map(a => (
+          <div key={a.id} className={"glass rounded-2xl p-4 " + (a.is_active ? '' : 'opacity-50')}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="text-3xl">{a.icon || '🏆'}</div>
+                <div className="min-w-0">
+                  <div className="font-bold text-sm truncate">{a.name}</div>
+                  <div className="text-[11px] text-white/50 truncate">{a.description}</div>
+                  <div className="text-[10px] text-brand font-bold mt-0.5">+{a.xp_reward} XP</div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                <button onClick={()=>setEditing(a)} className="px-2 py-1 rounded-md bg-brand/15 text-brand text-[10px] font-bold">Edit</button>
+                <button onClick={()=>toggleActive(a)} className="px-2 py-1 rounded-md bg-white/5 text-[10px] font-bold">{a.is_active?'Hide':'Show'}</button>
+                <button onClick={()=>del(a.id)} className="px-2 py-1 rounded-md bg-danger/15 text-danger text-[10px] font-bold">Del</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {editing && <AchievementEditModal ach={editing} onClose={()=>setEditing(null)} onSave={()=>{load(); setEditing(null);}}/>}
+    </div>
+  );
+}
+
+function AchievementEditModal({ ach, onClose, onSave }) {
+  const isNew = !ach.id;
+  const [form, setForm] = useState({
+    code: ach.code||'',
+    name: ach.name||'',
+    description: ach.description||'',
+    icon: ach.icon||'🏆',
+    xp_reward: (ach.xp_reward||0).toString(),
+    kind: ach.requirement_json?.kind || 'count',
+    entity: ach.requirement_json?.entity || 'reels',
+    min: (ach.requirement_json?.min||1).toString(),
+    is_active: ach.is_active !== false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const req = form.kind === 'streak'
+      ? { kind:'streak', min: parseInt(form.min)||1 }
+      : { kind:'count', entity: form.entity, min: parseInt(form.min)||1 };
+    const payload = {
+      code: form.code || (form.name||'ach').toLowerCase().replace(/[^a-z0-9]+/g,'_'),
+      name: form.name,
+      description: form.description,
+      icon: form.icon,
+      xp_reward: parseInt(form.xp_reward)||0,
+      requirement_json: req,
+      is_active: form.is_active,
+    };
+    const { error } = isNew
+      ? await supa.from('achievements').insert(payload)
+      : await supa.from('achievements').update(payload).eq('id', ach.id);
+    setSaving(false);
+    if (error) alert('Greška: ' + error.message);
+    else onSave();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-bg0/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="glass-strong rounded-2xl max-w-md w-full p-6 my-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="font-display font-black text-xl">{isNew?'Novo dostignuće':'Edit dostignuće'}</h3>
+          <button onClick={onClose} className="text-2xl text-white/60">✕</button>
+        </div>
+        <div className="space-y-3">
+          <EditField label="Ime (npr. 'Prvi koraci')" value={form.name} onChange={v=>setForm({...form, name:v})}/>
+          <EditField label="Code (opciono)" value={form.code} onChange={v=>setForm({...form, code:v})}/>
+          <EditField label="Opis" value={form.description} onChange={v=>setForm({...form, description:v})}/>
+          <EditField label="Icon (emoji)" value={form.icon} onChange={v=>setForm({...form, icon:v})}/>
+          <EditField label="XP nagrada" value={form.xp_reward} onChange={v=>setForm({...form, xp_reward:v})}/>
+          <EditField label="Tip uslova" type="select" options={['count','streak']} value={form.kind} onChange={v=>setForm({...form, kind:v})}/>
+          {form.kind === 'count' && (
+            <EditField label="Entity" type="select" options={['reels','sales']} value={form.entity} onChange={v=>setForm({...form, entity:v})}/>
+          )}
+          <EditField label="Minimum (count ili streak dana)" value={form.min} onChange={v=>setForm({...form, min:v})}/>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form, is_active:e.target.checked})}/>
+            <span className="text-sm">Aktivno</span>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
+            {saving?'Snimam...':'💾 Sačuvaj'}
+          </button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: KURS CMS ===
+// =====================================================
+function AdminCourse() {
+  const [modules, setModules] = useState([]);
+  const [editing, setEditing] = useState(null);
+
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    const { data } = await supa.from('course_modules').select('*').order('module_order');
+    setModules(data||[]);
+  }
+  async function del(id) {
+    if (!confirm('Obrisati ovaj modul?')) return;
+    await supa.from('course_modules').delete().eq('id', id);
+    load();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-white/70">📚 {modules.length} modula</div>
+        <button onClick={()=>setEditing({ title:'', description:'', module_order: (modules.length+1), youtube_url:'', is_published:true })}
+          className="px-4 py-2 rounded-xl bg-brand text-bg0 text-xs font-bold">+ Novi modul</button>
+      </div>
+      <div className="space-y-3">
+        {modules.map(m => (
+          <div key={m.id} className="glass rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-white/40 font-mono">#{m.module_order}</div>
+                <div className="font-bold text-sm truncate">{m.title}</div>
+                {!m.is_published && <span className="text-[10px] text-gold">DRAFT</span>}
+              </div>
+              <div className="text-[11px] text-white/50 truncate mt-0.5">{m.description}</div>
+              {m.youtube_url && <a href={m.youtube_url} target="_blank" rel="noopener" className="text-[10px] text-brand font-mono break-all">{m.youtube_url}</a>}
+            </div>
+            <div className="flex flex-col gap-1 shrink-0">
+              <button onClick={()=>setEditing(m)} className="px-2 py-1 rounded-md bg-brand/15 text-brand text-[10px] font-bold">Edit</button>
+              <button onClick={()=>del(m.id)} className="px-2 py-1 rounded-md bg-danger/15 text-danger text-[10px] font-bold">Del</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {editing && <ModuleEditModal mod={editing} onClose={()=>setEditing(null)} onSave={()=>{load(); setEditing(null);}}/>}
+    </div>
+  );
+}
+
+function ModuleEditModal({ mod, onClose, onSave }) {
+  const isNew = !mod.id;
+  const [form, setForm] = useState({
+    title: mod.title||'',
+    description: mod.description||'',
+    module_order: (mod.module_order||1).toString(),
+    youtube_url: mod.youtube_url||'',
+    is_published: mod.is_published !== false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const payload = {
+      title: form.title,
+      description: form.description,
+      module_order: parseInt(form.module_order)||1,
+      youtube_url: form.youtube_url,
+      is_published: form.is_published,
+    };
+    const { error } = isNew
+      ? await supa.from('course_modules').insert(payload)
+      : await supa.from('course_modules').update(payload).eq('id', mod.id);
+    setSaving(false);
+    if (error) alert('Greška: ' + error.message);
+    else onSave();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-bg0/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="glass-strong rounded-2xl max-w-md w-full p-6 my-auto" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="font-display font-black text-xl">{isNew?'Novi modul':'Edit modul'}</h3>
+          <button onClick={onClose} className="text-2xl text-white/60">✕</button>
+        </div>
+        <div className="space-y-3">
+          <EditField label="Naslov" value={form.title} onChange={v=>setForm({...form, title:v})}/>
+          <EditField label="Opis" value={form.description} onChange={v=>setForm({...form, description:v})}/>
+          <EditField label="Redni broj" value={form.module_order} onChange={v=>setForm({...form, module_order:v})}/>
+          <EditField label="YouTube URL (unlisted)" value={form.youtube_url} onChange={v=>setForm({...form, youtube_url:v})} mono/>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" checked={form.is_published} onChange={e=>setForm({...form, is_published:e.target.checked})}/>
+            <span className="text-sm">Objavljeno</span>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
+            {saving?'Snimam...':'💾 Sačuvaj'}
+          </button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
+        </div>
+      </div>
     </div>
   );
 }
