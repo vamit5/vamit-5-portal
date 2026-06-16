@@ -41,6 +41,11 @@
   @keyframes aurora { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(25deg) saturate(1.15)} }
   @keyframes spin { to { transform:rotate(360deg) } }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes fadein { from { opacity:0; transform:scale(0.95) } to { opacity:1; transform:scale(1) } }
+  @keyframes bounce-in { 0% { transform:scale(0.3); opacity:0 } 50% { transform:scale(1.15) } 70% { transform:scale(0.9) } 100% { transform:scale(1); opacity:1 } }
+  @keyframes confetti { 0%{transform:translateY(0) rotate(0)} 100%{transform:translateY(100vh) rotate(720deg)} }
+  .animate-fadein { animation:fadein 0.4s ease-out }
+  .animate-bounce-in { animation:bounce-in 0.7s cubic-bezier(.34,1.56,.64,1) }
   .grad-text { background:linear-gradient(135deg,#00f0ff,#7a5bff,#ff3b9a); -webkit-background-clip:text; background-clip:text; color:transparent }
   .grad-text-gold { background:linear-gradient(135deg,#ffc24b,#ff8a3b,#ff3b9a); -webkit-background-clip:text; background-clip:text; color:transparent }
   .glass { background:rgba(20,24,42,0.55); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08) }
@@ -293,11 +298,13 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
   const isSuper = profile?.role === 'super_admin';
 
   const links = [
-    { hash:'#/dashboard', label:'Dashboard', emoji:'🏠' },
-    { hash:'#/reels',     label:'Reels',     emoji:'🎬' },
-    { hash:'#/kurs',      label:'Kurs',      emoji:'📚' },
-    { hash:'#/isplate',   label:'Isplate',   emoji:'💸' },
-    { hash:'#/profil',    label:'Profil',    emoji:'👤' },
+    { hash:'#/dashboard',  label:'Dashboard',  emoji:'🏠' },
+    { hash:'#/reels',      label:'Reels',      emoji:'🎬' },
+    { hash:'#/kurs',       label:'Kurs',       emoji:'📚' },
+    { hash:'#/dostignuca', label:'Dostignuća', emoji:'🏆' },
+    { hash:'#/rang',       label:'Rang Lista', emoji:'📊' },
+    { hash:'#/isplate',    label:'Isplate',    emoji:'💸' },
+    { hash:'#/profil',     label:'Profil',     emoji:'👤' },
   ];
   if (isSuper) links.push({ hash:'#/admin', label:'Admin', emoji:'⚙️', special:true });
 
@@ -366,6 +373,7 @@ function Dashboard({ athlete, profile }) {
   const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0 });
   const [activity, setActivity] = useState([]);
   const [levelCfg, setLevelCfg] = useState(null);
+  const [newAchievement, setNewAchievement] = useState(null);
   const theme = LEVEL_THEME[athlete?.level || 'recruit'];
 
   useEffect(() => {
@@ -381,7 +389,7 @@ function Dashboard({ athlete, profile }) {
 
   async function loadAll() {
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-    const [r1, r2, r3, sa, sm, ep, ea, el, lc] = await Promise.all([
+    const [r1, r2, r3, sa, sm, ep, ea, el, lc, reelsDates] = await Promise.all([
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthStart.toISOString()),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
@@ -390,24 +398,45 @@ function Dashboard({ athlete, profile }) {
       supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','pending'),
       supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','available').is('payout_request_id', null),
       supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).in('status', ['available','paid','pending']),
-      supa.from('level_configs').select('*').eq('level_key', athlete.level).maybeSingle()
+      supa.from('level_configs').select('*').eq('level_key', athlete.level).maybeSingle(),
+      supa.from('reels').select('submitted_at').eq('athlete_id', athlete.id).eq('status','approved').order('submitted_at',{ascending:false}).limit(120)
     ]);
+
+    // === STREAK CALC ===
+    const dates = new Set((reelsDates.data||[]).map(r => (r.submitted_at||'').slice(0,10)));
+    let streak = 0;
+    const today = new Date();
+    for (let i=0; i<365; i++) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      const ds = d.toISOString().slice(0,10);
+      if (dates.has(ds)) streak++;
+      else if (i > 0) break; // dozvoli da danas još nije submit-ovan
+      else continue;
+    }
+
+    const reelsTotal = r1.count||0;
+    const salesTotal = sa.count||0;
     setStats({
-      reels_total: r1.count||0,
+      reels_total: reelsTotal,
       reels_month: r2.count||0,
       reels_pending: r3.count||0,
-      sales_total: sa.count||0,
+      sales_total: salesTotal,
       sales_month: sm.count||0,
       earnings_pending: (ep.data||[]).reduce((s,x)=>s+x.amount_cents,0),
       earnings_available: (ea.data||[]).reduce((s,x)=>s+x.amount_cents,0),
       earnings_lifetime: (el.data||[]).reduce((s,x)=>s+x.amount_cents,0),
-      streak: 0
+      streak
     });
     setLevelCfg(lc.data);
 
     // recent activity
     const { data: acts } = await supa.from('earnings_ledger').select('*').eq('athlete_id', athlete.id).order('created_at',{ascending:false}).limit(8);
     setActivity(acts||[]);
+
+    // === ACHIEVEMENT ENGINE ===
+    runAchievementEngine(athlete.id, { reels_total: reelsTotal, sales_total: salesTotal, streak }).then(unlocked => {
+      if (unlocked && unlocked.length) setNewAchievement(unlocked[0]);
+    });
   }
 
   if (!athlete) return <div className="glass rounded-2xl p-8 text-center text-white/60">Atleta nije pronađena. Kontaktiraj admina.</div>;
@@ -477,8 +506,8 @@ function Dashboard({ athlete, profile }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <QuickAction href="#/reels" emoji="🎬" label="Submit Reel" color={theme.color}/>
         <QuickAction href="#/kurs" emoji="📚" label="Otvori Kurs" color="#00f0ff"/>
-        <QuickAction href="#/isplate" emoji="💸" label="Isplate" color="#ffc24b"/>
-        <QuickAction href="#/profil" emoji="👤" label="Profil" color="#a855f7"/>
+        <QuickAction href="#/dostignuca" emoji="🏆" label="Dostignuća" color="#ffc24b"/>
+        <QuickAction href="#/rang" emoji="📊" label="Rang Lista" color="#a855f7"/>
       </div>
 
       {/* OVERVIEW STATS */}
@@ -514,6 +543,63 @@ function Dashboard({ athlete, profile }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* ACHIEVEMENT UNLOCK MODAL */}
+      {newAchievement && <AchievementUnlockModal ach={newAchievement} onClose={()=>setNewAchievement(null)}/>}
+    </div>
+  );
+}
+
+// === ACHIEVEMENT ENGINE ===
+async function runAchievementEngine(athleteId, snapshot) {
+  // snapshot: { reels_total, sales_total, streak }
+  const [{ data: allAch }, { data: unlocked }] = await Promise.all([
+    supa.from('achievements').select('*').eq('is_active', true),
+    supa.from('athlete_achievements').select('achievement_id').eq('athlete_id', athleteId)
+  ]);
+  const unlockedSet = new Set((unlocked||[]).map(x => x.achievement_id));
+  const newlyUnlocked = [];
+  for (const ach of (allAch||[])) {
+    if (unlockedSet.has(ach.id)) continue;
+    if (matchesRequirement(ach.requirement_json, snapshot)) {
+      const { error } = await supa.from('athlete_achievements').insert({ athlete_id: athleteId, achievement_id: ach.id, unlocked_at: new Date().toISOString() });
+      if (!error) {
+        newlyUnlocked.push(ach);
+        // XP nagrada
+        if (ach.xp_reward) {
+          await supa.from('xp_ledger').insert({ athlete_id: athleteId, amount: ach.xp_reward, source: 'achievement', description: 'Dostignuće: ' + ach.name });
+        }
+      }
+    }
+  }
+  return newlyUnlocked;
+}
+
+function matchesRequirement(req, snap) {
+  if (!req) return false;
+  try {
+    if (req.kind === 'count') {
+      if (req.entity === 'reels') return (snap.reels_total||0) >= (req.min||0);
+      if (req.entity === 'sales') return (snap.sales_total||0) >= (req.min||0);
+    }
+    if (req.kind === 'streak') {
+      return (snap.streak||0) >= (req.min||0);
+    }
+  } catch(e) { return false; }
+  return false;
+}
+
+function AchievementUnlockModal({ ach, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] bg-bg0/95 backdrop-blur-xl flex items-center justify-center p-5 animate-fadein" onClick={onClose}>
+      <div className="glass-strong rounded-3xl p-8 max-w-sm w-full text-center border-2 border-gold/60" style={{boxShadow:'0 0 80px rgba(255,194,75,0.4)'}}>
+        <div className="text-xs text-gold uppercase tracking-[0.3em] font-black mb-2">🎉 Dostignuće Otključano</div>
+        <div className="text-7xl my-4">{ach.icon || '🏆'}</div>
+        <h2 className="font-display font-black text-2xl text-gold mb-2">{ach.name}</h2>
+        <p className="text-sm text-white/70 mb-4">{ach.description}</p>
+        {ach.xp_reward && <div className="text-base font-black text-brand mb-5">+{ach.xp_reward} XP</div>}
+        <button onClick={onClose} className="w-full py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-gold via-brand3 to-brand">Slavim! 🔥</button>
       </div>
     </div>
   );
@@ -865,11 +951,13 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
     else { setMsg({type:'ok', text:'✓ Sačuvano!'}); await refreshProfile(profile.id); }
   }
 
-  const rewardfulLink = athlete?.rewardful_token ? `https://vamit-5-2.getrewardful.com/?via=${athlete.rewardful_token}` : null;
+  // Koristi vrednost iz form ako postoji (live update), inače iz baze
+  const currentLink = (form.rewardful_token || athlete?.rewardful_token || '').trim();
+  const hasLink = currentLink.length > 0;
 
   function copyLink() {
-    if (!rewardfulLink) return;
-    navigator.clipboard.writeText(rewardfulLink);
+    if (!hasLink) return;
+    navigator.clipboard.writeText(currentLink);
     setCopied(true);
     setTimeout(()=>setCopied(false), 2000);
   }
@@ -878,32 +966,27 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">👤 Profil</h1>
-        <p className="text-sm text-white/60">Lični podaci, affiliate link i bank info.</p>
+        <p className="text-sm text-white/60">Lični podaci, Rewardful link i bank info.</p>
       </div>
 
       {/* REWARDFUL LINK CARD */}
       <div className="glass-strong rounded-2xl p-5 sm:p-6" style={{borderColor:'rgba(0,240,255,0.3)'}}>
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <div className="font-display font-bold text-base">🔗 Tvoj Rewardful Affiliate Link</div>
-            <div className="text-xs text-white/60 mt-1">Deli ovaj link — kad neko kupi preko njega, ti zaradiš.</div>
-          </div>
+        <div className="mb-3">
+          <div className="font-display font-bold text-base">🔗 Tvoj Rewardful Affiliate Link</div>
+          <div className="text-xs text-white/60 mt-1">Link koji deliš sa pratiocima — kad neko kupi preko njega, ti zaradiš.</div>
         </div>
-        {rewardfulLink ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
-              <code className="text-xs sm:text-sm text-brand flex-1 break-all">{rewardfulLink}</code>
-              <button onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
-                {copied ? '✓ Kopirano' : '📋 Kopiraj'}
-              </button>
-            </div>
-            <div className="text-[11px] text-white/50">Token: <code className="text-brand">{athlete.rewardful_token}</code></div>
+        {hasLink ? (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
+            <code className="text-xs sm:text-sm text-brand flex-1 break-all">{currentLink}</code>
+            <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
+              {copied ? '✓ Kopirano' : '📋 Kopiraj'}
+            </button>
           </div>
         ) : (
           <div className="p-4 rounded-xl bg-gold/10 border border-gold/30 text-sm">
-            ⚠ <b className="text-gold">Rewardful token nije postavljen.</b> Registruj se na{' '}
+            ℹ️ Registruj se na{' '}
             <a href="https://vamit-5-2.getrewardful.com/" target="_blank" rel="noopener" className="text-brand underline">vamit-5-2.getrewardful.com</a>
-            {' '}i unesi svoj token ispod.
+            {' '}i nalepi svoj link u polje ispod.
           </div>
         )}
       </div>
@@ -914,11 +997,11 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
           <Field label="Email"><input value={profile?.email||''} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
           <Field label="Tvoj nivo"><input value={LEVEL_THEME[athlete?.level||'recruit'].name} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
           <Field label="Puno ime"><input value={form.full_name} onChange={e=>setForm({...form, full_name:e.target.value})} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
-          <Field label="Rewardful Token (nalazi se u tvom Rewardful nalogu)">
+          <Field label="Rewardful Link (ceo URL koji deliš sa pratiocima)">
             <input value={form.rewardful_token} onChange={e=>setForm({...form, rewardful_token:e.target.value})}
-              placeholder="npr. abc123" className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/>
+              placeholder="https://vamit-5-2.getrewardful.com/?via=tvojkod" className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/>
             <div className="text-[11px] text-white/50 mt-1.5">
-              Token je deo URL-a kad odeš u svoj Rewardful nalog (npr. <code>?via=abc123</code> — token je <code>abc123</code>).
+              Nalepi CEO link koji si dobio od Rewardfula. Posle čuvanja, vidi karticu iznad i kopiraj ga.
             </div>
           </Field>
         </div>
@@ -1242,7 +1325,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
           <>
             <div className="space-y-3 mb-5">
               <DetailRow label="Status" value={athlete.status} mono/>
-              <DetailRow label="Rewardful Token" value={athlete.rewardful_token || '— (nije postavljen)'} mono/>
+              <DetailRow label="Rewardful Link" value={athlete.rewardful_token || '— (nije postavljen)'} mono/>
               <DetailRow label="Rewardful Affiliate ID" value={athlete.rewardful_affiliate_id || '—'} mono/>
               <DetailRow label="Telefon" value={athlete.bank_phone || '—'}/>
               <DetailRow label="🏦 Bank Ime" value={athlete.bank_full_name || '—'}/>
@@ -1261,7 +1344,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
               <EditField label="Puno ime" value={form.full_name||''} onChange={v=>setForm({...form, full_name:v})}/>
               <EditField label="Status" type="select" options={['active','suspended','banned','applicant']} value={form.status} onChange={v=>setForm({...form, status:v})}/>
               <EditField label="Nivo" type="select" options={['recruit','pro','commando','elite']} value={form.level} onChange={v=>setForm({...form, level:v})}/>
-              <EditField label="Rewardful Token" value={form.rewardful_token||''} onChange={v=>setForm({...form, rewardful_token:v})}/>
+              <EditField label="Rewardful Link" value={form.rewardful_token||''} onChange={v=>setForm({...form, rewardful_token:v})}/>
               <EditField label="Telefon" value={form.bank_phone||''} onChange={v=>setForm({...form, bank_phone:v})}/>
               <EditField label="Bank ime" value={form.bank_full_name||''} onChange={v=>setForm({...form, bank_full_name:v})}/>
               <EditField label="IBAN" value={form.bank_iban||''} onChange={v=>setForm({...form, bank_iban:v})} mono/>
@@ -1299,6 +1382,253 @@ function EditField({ label, value, onChange, type='text', options, mono }) {
         </select>
       ) : (
         <input value={value} onChange={e=>onChange(e.target.value)} className={"w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm " + (mono?'font-mono':'')}/>
+      )}
+    </div>
+  );
+}
+
+// === DOSTIGNUCA (Achievements) ===
+function AchievementsPage({ athlete }) {
+  const [achievements, setAchievements] = useState([]);
+  const [unlocked, setUnlocked] = useState({});
+  const [snap, setSnap] = useState({ reels_total:0, sales_total:0, streak:0 });
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+
+  useEffect(() => { if (athlete) load(); }, [athlete?.id]);
+
+  async function load() {
+    setLoading(true);
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+    const [allAch, mine, reels, sales, dates] = await Promise.all([
+      supa.from('achievements').select('*').eq('is_active', true).order('xp_reward',{ascending:true}),
+      supa.from('athlete_achievements').select('achievement_id, unlocked_at').eq('athlete_id', athlete.id),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
+      supa.from('reels').select('submitted_at').eq('athlete_id', athlete.id).eq('status','approved').limit(120)
+    ]);
+    const dSet = new Set((dates.data||[]).map(r => (r.submitted_at||'').slice(0,10)));
+    let streak = 0; const today = new Date();
+    for (let i=0; i<365; i++) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      const ds = d.toISOString().slice(0,10);
+      if (dSet.has(ds)) streak++;
+      else if (i > 0) break;
+    }
+    setAchievements(allAch.data||[]);
+    const map = {};
+    (mine.data||[]).forEach(x => { map[x.achievement_id] = x.unlocked_at; });
+    setUnlocked(map);
+    setSnap({ reels_total: reels.count||0, sales_total: sales.count||0, streak });
+    setLoading(false);
+  }
+
+  const unlockedCount = Object.keys(unlocked).length;
+  const totalXP = achievements.filter(a => unlocked[a.id]).reduce((s,a)=>s+(a.xp_reward||0), 0);
+
+  const filtered = achievements.filter(a => {
+    if (filter === 'unlocked') return unlocked[a.id];
+    if (filter === 'locked') return !unlocked[a.id];
+    return true;
+  });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🏆 Dostignuća</h1>
+        <p className="text-sm text-white/60">Otključavaj badge-ove kroz akciju. Svako dostignuće = XP nagrada.</p>
+      </div>
+
+      {/* SUMMARY */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="glass-strong rounded-2xl p-4 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-white/50">Otključano</div>
+          <div className="font-display font-black text-2xl text-gold">{unlockedCount}/{achievements.length}</div>
+        </div>
+        <div className="glass-strong rounded-2xl p-4 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-white/50">XP iz dostignuća</div>
+          <div className="font-display font-black text-2xl text-brand">{totalXP}</div>
+        </div>
+        <div className="glass-strong rounded-2xl p-4 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-white/50">Streak</div>
+          <div className="font-display font-black text-2xl text-brand3">🔥 {snap.streak}d</div>
+        </div>
+      </div>
+
+      {/* FILTER */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          {k:'all', l:'Sva'}, {k:'unlocked', l:'Otključana'}, {k:'locked', l:'Zaključana'}
+        ].map(f => (
+          <button key={f.k} onClick={()=>setFilter(f.k)}
+            className={"px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap " + (filter===f.k ? 'bg-brand text-bg0' : 'bg-white/5 text-white/70 hover:bg-white/10')}>
+            {f.l}
+          </button>
+        ))}
+      </div>
+
+      {/* GRID */}
+      {loading ? (
+        <div className="text-center py-10 text-white/50">Ucitavam...</div>
+      ) : filtered.length === 0 ? (
+        <div className="glass rounded-2xl p-10 text-center text-white/60">Nema dostignuća u ovoj kategoriji.</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          {filtered.map(a => {
+            const isUnlocked = !!unlocked[a.id];
+            const progress = getProgress(a.requirement_json, snap);
+            return (
+              <div key={a.id} className={"glass rounded-2xl p-4 text-center " + (isUnlocked ? 'border border-gold/40' : 'opacity-60')}>
+                <div className={"text-5xl mb-2 " + (isUnlocked ? '' : 'grayscale')}>{a.icon || '🏆'}</div>
+                <div className={"font-display font-black text-sm mb-1 " + (isUnlocked ? 'text-gold' : 'text-white/70')}>{a.name}</div>
+                <div className="text-[11px] text-white/50 mb-2 line-clamp-2">{a.description}</div>
+                {a.xp_reward && <div className="text-xs font-bold text-brand mb-2">+{a.xp_reward} XP</div>}
+                {!isUnlocked && progress && (
+                  <div className="space-y-1">
+                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                      <div className="h-full bg-brand transition-all" style={{width: progress.pct + '%'}}/>
+                    </div>
+                    <div className="text-[10px] text-white/50">{progress.current}/{progress.target}</div>
+                  </div>
+                )}
+                {isUnlocked && <div className="text-[10px] text-lime font-bold">✓ {fromNow(unlocked[a.id])}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getProgress(req, snap) {
+  if (!req || req.kind !== 'count' && req.kind !== 'streak') return null;
+  let current = 0;
+  if (req.kind === 'count') {
+    if (req.entity === 'reels') current = snap.reels_total||0;
+    if (req.entity === 'sales') current = snap.sales_total||0;
+  }
+  if (req.kind === 'streak') current = snap.streak||0;
+  const target = req.min || 1;
+  return { current, target, pct: Math.min(100, Math.round((current/target)*100)) };
+}
+
+// === RANG LISTA (Leaderboard) ===
+function LeaderboardPage({ athlete }) {
+  const [period, setPeriod] = useState('month'); // month | all
+  const [metric, setMetric] = useState('reels'); // reels | sales | xp
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, [period, metric]);
+
+  async function load() {
+    setLoading(true);
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+    let result = [];
+    if (metric === 'reels') {
+      let q = supa.from('reels').select('athlete_id').eq('status','approved');
+      if (period === 'month') q = q.gte('submitted_at', monthStart.toISOString());
+      const { data } = await q;
+      const map = {};
+      (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+1; });
+      result = Object.entries(map).map(([id, val]) => ({ id, val }));
+    } else if (metric === 'sales') {
+      let q = supa.from('sales').select('athlete_id').eq('status','confirmed');
+      if (period === 'month') q = q.gte('created_at', monthStart.toISOString());
+      const { data } = await q;
+      const map = {};
+      (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+1; });
+      result = Object.entries(map).map(([id, val]) => ({ id, val }));
+    } else {
+      // XP
+      let q = supa.from('xp_ledger').select('athlete_id, amount');
+      if (period === 'month') q = q.gte('created_at', monthStart.toISOString());
+      const { data } = await q;
+      const map = {};
+      (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+(r.amount||0); });
+      result = Object.entries(map).map(([id, val]) => ({ id, val }));
+    }
+    result.sort((a,b) => b.val - a.val);
+    result = result.slice(0, 50);
+
+    if (result.length) {
+      const ids = result.map(r => r.id);
+      const { data: profiles } = await supa.from('athletes').select('id, level, profiles!athletes_id_fkey(full_name, email)').in('id', ids);
+      const pmap = {};
+      (profiles||[]).forEach(p => { pmap[p.id] = p; });
+      result = result.map(r => ({ ...r, athlete: pmap[r.id] }));
+    }
+    setRows(result);
+    setLoading(false);
+  }
+
+  const myRank = rows.findIndex(r => r.id === athlete?.id) + 1;
+  const metricLabel = { reels:'Reels', sales:'Prodaje', xp:'XP' }[metric];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">📊 Rang Lista</h1>
+        <p className="text-sm text-white/60">Top 50 atleta. Bori se za #1.</p>
+      </div>
+
+      {/* MY RANK CARD */}
+      {athlete && (
+        <div className="glass-strong rounded-2xl p-4 sm:p-5 flex items-center justify-between border border-brand/30">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/50">Tvoja pozicija</div>
+            <div className="font-display font-black text-2xl text-brand">{myRank > 0 ? '#'+myRank : 'Nerangiran'}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wider text-white/50">{metricLabel}</div>
+            <div className="font-display font-black text-xl">{rows.find(r=>r.id===athlete.id)?.val || 0}</div>
+          </div>
+        </div>
+      )}
+
+      {/* FILTERS */}
+      <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-1 glass rounded-xl p-1">
+          {['month','all'].map(p => (
+            <button key={p} onClick={()=>setPeriod(p)} className={"px-3 py-1.5 rounded-lg text-xs font-bold " + (period===p ? 'bg-brand text-bg0' : 'text-white/70')}>{p==='month'?'Ovaj mesec':'Sve vreme'}</button>
+          ))}
+        </div>
+        <div className="flex gap-1 glass rounded-xl p-1">
+          {[['reels','🎬 Reels'],['sales','💎 Prodaje'],['xp','⚡ XP']].map(([k,l]) => (
+            <button key={k} onClick={()=>setMetric(k)} className={"px-3 py-1.5 rounded-lg text-xs font-bold " + (metric===k ? 'bg-brand text-bg0' : 'text-white/70')}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* LEADERBOARD */}
+      {loading ? (
+        <div className="text-center py-10 text-white/50">Ucitavam...</div>
+      ) : rows.length === 0 ? (
+        <div className="glass rounded-2xl p-10 text-center text-white/60">Nema podataka za ovaj period.</div>
+      ) : (
+        <div className="glass rounded-2xl overflow-hidden">
+          {rows.map((r, i) => {
+            const isMe = r.id === athlete?.id;
+            const lvl = r.athlete?.level || 'recruit';
+            const lvlTheme = LEVEL_THEME[lvl];
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+            return (
+              <div key={r.id} className={"flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5 " + (isMe ? 'bg-brand/10' : '')}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={"w-9 text-center font-black " + (i<3 ? 'text-2xl' : 'text-sm text-white/40')}>
+                    {medal || '#'+(i+1)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm truncate">{r.athlete?.profiles?.full_name || r.athlete?.profiles?.email?.split('@')[0] || '—'} {isMe && <span className="text-brand">(ti)</span>}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider" style={{color: lvlTheme.color}}>{lvlTheme.emoji} {lvlTheme.name}</div>
+                  </div>
+                </div>
+                <div className="font-display font-black text-base shrink-0">{r.val}</div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -1343,6 +1673,8 @@ function App() {
     if (route === '/dashboard' || route === '/') return <Dashboard athlete={athlete} profile={profile}/>;
     if (route === '/reels') return <ReelsPage athlete={athlete}/>;
     if (route === '/kurs') return <KursPage athlete={athlete}/>;
+    if (route === '/dostignuca') return <AchievementsPage athlete={athlete}/>;
+    if (route === '/rang') return <LeaderboardPage athlete={athlete}/>;
     if (route === '/isplate') return <IsplatePage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
     if (route === '/profil') return <ProfilPage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
     if (route === '/admin' && profile?.role === 'super_admin') return <AdminPage/>;
