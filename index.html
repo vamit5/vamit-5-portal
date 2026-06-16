@@ -38,19 +38,24 @@
       radial-gradient(700px 400px at 50% 110%, rgba(255,59,154,0.2), transparent 60%);
     animation: aurora 18s ease-in-out infinite alternate;
   }
-  @keyframes aurora { 0%{filter:hue-rotate(0deg) saturate(1)} 100%{filter:hue-rotate(25deg) saturate(1.15)} }
-  @keyframes spin { to { transform: rotate(360deg) } }
+  @keyframes aurora { 0%{filter:hue-rotate(0deg)} 100%{filter:hue-rotate(25deg) saturate(1.15)} }
+  @keyframes spin { to { transform:rotate(360deg) } }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
   .grad-text { background:linear-gradient(135deg,#00f0ff,#7a5bff,#ff3b9a); -webkit-background-clip:text; background-clip:text; color:transparent }
   .grad-text-gold { background:linear-gradient(135deg,#ffc24b,#ff8a3b,#ff3b9a); -webkit-background-clip:text; background-clip:text; color:transparent }
   .glass { background:rgba(20,24,42,0.55); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08) }
   .glass-strong { background:rgba(20,24,42,0.75); backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.12) }
   .spinner { width:36px;height:36px;border:3px solid rgba(255,255,255,0.1);border-top-color:#00f0ff;border-radius:50%;animation:spin .6s linear infinite }
+  /* Level themed glows */
+  .glow-recruit { box-shadow: 0 0 60px -10px rgba(166,255,59,0.4), 0 20px 60px -20px rgba(166,255,59,0.3) }
+  .glow-pro { box-shadow: 0 0 60px -10px rgba(59,130,246,0.4), 0 20px 60px -20px rgba(59,130,246,0.3) }
+  .glow-commando { box-shadow: 0 0 60px -10px rgba(168,85,247,0.4), 0 20px 60px -20px rgba(168,85,247,0.3) }
+  .glow-elite { box-shadow: 0 0 60px -10px rgba(255,194,75,0.5), 0 20px 60px -20px rgba(255,194,75,0.4) }
 </style>
 </head>
 <body>
 <div id="loading" style="position:fixed;inset:0;display:grid;place-items:center;background:#05060a;z-index:9999">
-  <div style="text-align:center"><div class="spinner" style="margin:0 auto 12px"></div><div style="color:#9aa0c4;font-size:13px">Učitavanje portala...</div></div>
+  <div style="text-align:center"><div class="spinner" style="margin:0 auto 12px"></div><div style="color:#9aa0c4;font-size:13px">Učitavanje...</div></div>
 </div>
 <div id="root"></div>
 
@@ -58,26 +63,29 @@
 <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.24.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <script>
-// SUPABASE CONFIG (your project)
 window.SUPABASE_URL = "https://bauuhowpbrqqmojqnqbr.supabase.co";
 window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhdXVob3dwYnJxcW1vanFucWJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjQwOTgsImV4cCI6MjA5MjcwMDA5OH0.dHkcP-BLwfXDVrugjwokQ1u4lUyahdQQG6uMbigl0ks";
-setTimeout(function(){ var el = document.getElementById('loading'); if (el) el.style.display='none'; }, 7000);
+setTimeout(function(){ var el = document.getElementById('loading'); if (el) el.style.display='none'; }, 8000);
 </script>
 
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef } = React;
-
-const supa = (window.SUPABASE_URL && window.SUPABASE_ANON_KEY !== "REPLACE_WITH_ANON_KEY" && window.supabase)
-  ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, { auth: { flowType:'implicit', detectSessionInUrl:true, persistSession:true, autoRefreshToken:true } })
-  : null;
+const supa = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+  auth: { flowType:'implicit', detectSessionInUrl:true, persistSession:true, autoRefreshToken:true }
+});
 
 const LOGO = "https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png";
 const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdv438-d72F_NZl75CSOmMxyo92ZiKfUlQ8WT0JW4uknerkhg/viewform";
-const REWARDFUL_URL = "https://vamit-5-2.getrewardful.com/";
 
-// === ROUTER (hash-based) ===
+const LEVEL_THEME = {
+  recruit:  { color:'#a6ff3b', name:'RECRUIT', emoji:'🎯', glow:'glow-recruit' },
+  pro:      { color:'#3b82f6', name:'PRO',     emoji:'⚡', glow:'glow-pro' },
+  commando: { color:'#a855f7', name:'COMMANDO', emoji:'🚀', glow:'glow-commando' },
+  elite:    { color:'#ffc24b', name:'ELITE',   emoji:'👑', glow:'glow-elite' }
+};
+
+// === ROUTING ===
 function useHash() {
   const [hash, setHash] = useState(window.location.hash || '#/');
   useEffect(() => {
@@ -88,43 +96,80 @@ function useHash() {
   return hash;
 }
 
-// === AUTH STATE ===
+// === AUTH ===
 function useAuth() {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [athlete, setAthlete] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  async function refreshProfile(uid) {
+    if (!uid) { setProfile(null); setAthlete(null); return; }
+    try {
+      const [{ data: prof }, { data: ath }] = await Promise.all([
+        supa.from('profiles').select('*').eq('id', uid).maybeSingle(),
+        supa.from('athletes').select('*').eq('id', uid).maybeSingle()
+      ]);
+      setProfile(prof);
+      setAthlete(ath);
+    } catch(e) { console.error('profile load', e); }
+  }
+
   useEffect(() => {
-    if (!supa) { setLoading(false); return; }
-    supa.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user || null);
+    supa.auth.getSession().then(async ({ data }) => {
+      const u = data.session?.user || null;
+      setUser(u);
+      if (u) await refreshProfile(u.id);
       setLoading(false);
     });
-    const { data: sub } = supa.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user || null);
+    const { data: sub } = supa.auth.onAuthStateChange(async (_, session) => {
+      const u = session?.user || null;
+      setUser(u);
+      if (u) await refreshProfile(u.id);
+      else { setProfile(null); setAthlete(null); }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-  return { user, loading };
+
+  return { user, profile, athlete, loading, refreshProfile };
 }
 
-// === COMPONENTS ===
-function Nav({ user }) {
+// === UTILS ===
+const formatEUR = (cents) => '€' + ((cents||0)/100).toFixed(2);
+const formatDate = (d) => d ? new Date(d).toLocaleDateString('sr-Latn',{day:'2-digit', month:'short', year:'numeric'}) : '-';
+const fromNow = (d) => {
+  if(!d) return '';
+  const diff = Math.floor((Date.now() - new Date(d).getTime())/1000);
+  if (diff<60) return 'pre malo';
+  if (diff<3600) return Math.floor(diff/60)+'m';
+  if (diff<86400) return Math.floor(diff/3600)+'h';
+  return Math.floor(diff/86400)+'d';
+};
+
+// =====================================================================
+// COMPONENTS
+// =====================================================================
+function Logo({size='md'}) {
+  const s = size==='lg' ? 'w-12 h-12' : 'w-9 h-9';
+  return (
+    <a href="#/" className="flex items-center gap-2 group">
+      <img src={LOGO} alt="VAMIT-5" className={s + " object-contain"} />
+      <div>
+        <div className="font-black text-sm sm:text-base leading-tight">VAMIT-5</div>
+        <div className="text-[9px] sm:text-[10px] tracking-[0.18em] text-white/50 uppercase font-bold">Athlete Portal</div>
+      </div>
+    </a>
+  );
+}
+
+function PublicNav({ user }) {
   return (
     <nav className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between relative z-10">
-      <a href="#/" className="flex items-center gap-2">
-        <img src={LOGO} alt="VAMIT-5" className="w-10 h-10 object-contain" />
-        <div>
-          <div className="font-black text-base">VAMIT-5</div>
-          <div className="text-[10px] tracking-[0.18em] text-white/50 uppercase font-bold">Athlete Portal</div>
-        </div>
-      </a>
+      <Logo />
       {user ? (
-        <a href="#/portal" className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-brand to-brand2 text-bg0">
-          Moj portal
-        </a>
+        <a href="#/dashboard" className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-brand to-brand2 text-bg0">Moj portal</a>
       ) : (
-        <a href="#/login" className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-brand to-brand2 text-bg0">
-          Prijava
-        </a>
+        <a href="#/login" className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-brand to-brand2 text-bg0">Prijava</a>
       )}
     </nav>
   );
@@ -133,32 +178,26 @@ function Nav({ user }) {
 function LandingPage() {
   return (
     <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pt-8 sm:pt-16 pb-20">
-      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass border-gold/40 mb-7">
+      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass border border-gold/40 mb-7">
         <span className="h-2 w-2 rounded-full bg-gold" style={{animation:'pulse 1.6s infinite'}}></span>
-        <span className="text-xs font-bold text-gold tracking-[0.18em] uppercase">Phase 0 — Foundation</span>
+        <span className="text-xs font-bold text-gold tracking-[0.18em] uppercase">Prijave otvorene</span>
       </div>
-
       <h1 className="font-display font-black text-4xl sm:text-6xl md:text-7xl tracking-[-0.03em] leading-[1.05] mb-6 max-w-5xl">
-        VAMIT-5 Athlete<br />
+        VAMIT-5 Athlete<br/>
         <span className="grad-text-gold">Portal</span>
       </h1>
-
       <p className="text-base sm:text-xl text-white/70 max-w-2xl mb-10 leading-relaxed">
-        4 nivoa napredovanja. Instant zarade po Reel-u. Gamifikacija. Kursevi. Tim.
-        Sve u jednoj aplikaciji.
+        4 nivoa napredovanja. Zarade po Reel-u. Gamifikacija. Kursevi. Tim. Sve u jednoj aplikaciji.
       </p>
-
-      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-12">
+      <div className="flex flex-col sm:flex-row gap-3 mb-12">
         <a href={FORM_URL} target="_blank" rel="noopener"
-           className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-4 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 shadow-[0_20px_50px_-12px_rgba(0,240,255,0.6)]">
+          className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-4 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 shadow-[0_20px_50px_-12px_rgba(0,240,255,0.6)]">
           POSTANI VAMIT-5 ATHLETE →
         </a>
-        <a href="#/login"
-           className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-4 rounded-2xl font-extrabold glass text-white">
-          Već sam atleta — Prijava
+        <a href="#/login" className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-4 rounded-2xl font-extrabold glass text-white">
+          Vec sam atleta — Prijava
         </a>
       </div>
-
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-12">
         {[
           {emoji:'🎬', label:'Reels', text:'€0.30 po odobrenom'},
@@ -180,88 +219,66 @@ function LandingPage() {
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState("email"); // "email" -> "code"
+  const [step, setStep] = useState("email");
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
 
   async function sendCode(e) {
     e.preventDefault();
-    if (!supa) { setErr("Supabase nije konfigurisan."); return; }
     setLoading(true); setErr(null);
-    const { error } = await supa.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true }
-    });
+    const { error } = await supa.auth.signInWithOtp({ email, options:{ shouldCreateUser:true } });
     setLoading(false);
     if (error) setErr(error.message);
     else setStep("code");
   }
-
   async function verifyCode(e) {
     e.preventDefault();
-    if (!supa) return;
     setLoading(true); setErr(null);
-    const { data, error } = await supa.auth.verifyOtp({
-      email, token: code.trim(), type: 'email'
-    });
+    const { error } = await supa.auth.verifyOtp({ email, token: code.trim(), type:'email' });
     setLoading(false);
     if (error) setErr(error.message);
-    else {
-      // Uspesno! Auto redirect na portal
-      window.location.hash = '#/portal';
-    }
+    else { window.location.hash = '#/dashboard'; }
   }
 
   return (
-    <div className="relative z-10 min-h-[80vh] flex items-center justify-center px-4">
+    <div className="relative z-10 min-h-[80vh] flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
         <div className="glass-strong rounded-3xl p-8 sm:p-10">
           <h1 className="font-display text-2xl sm:text-3xl font-black mb-2">Prijavi se</h1>
-
-          {step === "email" && (
+          {step==="email" && (
             <>
-              <p className="text-sm text-white/60 mb-6">Unesi email — šaljemo ti kod za prijavu.</p>
+              <p className="text-sm text-white/60 mb-6">Unesi email — šaljemo ti 6-cifreni kod.</p>
               <form onSubmit={sendCode} className="space-y-4">
-                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)}
-                  placeholder="tvoj@email.com"
-                  className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm" />
+                <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="tvoj@email.com"
+                  className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/>
                 {err && <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">{err}</div>}
-                <button type="submit" disabled={loading || !email}
+                <button type="submit" disabled={loading||!email}
                   className="w-full py-3.5 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
                   {loading ? "Šaljem..." : "Pošalji kod"}
                 </button>
               </form>
             </>
           )}
-
-          {step === "code" && (
+          {step==="code" && (
             <>
-              <p className="text-sm text-white/60 mb-1">Poslali smo kod na <b className="text-brand">{email}</b>.</p>
-              <p className="text-xs text-white/50 mb-6">Otvori email i ukucaj kod ovde.</p>
+              <p className="text-sm text-white/60 mb-1">Kod je poslat na <b className="text-brand">{email}</b></p>
+              <p className="text-xs text-white/50 mb-6">Otvori email i ukucaj kod.</p>
               <form onSubmit={verifyCode} className="space-y-4">
-                <input type="text" inputMode="numeric" autoComplete="one-time-code" required
-                  value={code} onChange={e=>setCode(e.target.value.replace(/\s/g,''))}
-                  placeholder="123456"
-                  maxLength={10}
-                  className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-center text-2xl tracking-[0.3em] font-bold" />
+                <input type="text" inputMode="numeric" autoComplete="one-time-code" required value={code}
+                  onChange={e=>setCode(e.target.value.replace(/\s/g,''))} placeholder="123456" maxLength={10}
+                  className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-center text-2xl tracking-[0.3em] font-bold"/>
                 {err && <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">{err}</div>}
-                <button type="submit" disabled={loading || code.length < 4}
+                <button type="submit" disabled={loading||code.length<4}
                   className="w-full py-3.5 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
                   {loading ? "Proveravam..." : "Prijavi se"}
                 </button>
-                <button type="button" onClick={() => { setStep("email"); setCode(""); setErr(null); }}
-                  className="w-full py-2 text-xs text-white/50 hover:text-white">
-                  ← Promeni email / Pošalji ponovo
-                </button>
+                <button type="button" onClick={()=>{setStep("email");setCode("");setErr(null);}}
+                  className="w-full py-2 text-xs text-white/50 hover:text-white">← Promeni email</button>
               </form>
             </>
           )}
-
           <div className="mt-6 pt-6 border-t border-white/10 text-center text-xs text-white/50">
-            Nisi još atleta?{" "}
-            <a href={FORM_URL} target="_blank" rel="noopener" className="text-brand font-bold hover:underline">
-              Prijavi se →
-            </a>
+            Nisi još atleta? <a href={FORM_URL} target="_blank" rel="noopener" className="text-brand font-bold">Prijavi se →</a>
           </div>
         </div>
       </div>
@@ -269,119 +286,834 @@ function LoginPage() {
   );
 }
 
-function PortalPage({ user }) {
-  async function logout() {
-    if (supa) await supa.auth.signOut();
-    window.location.hash = '#/';
-  }
+// === PORTAL SHELL ===
+function PortalShell({ profile, athlete, route, children, onLogout }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const theme = LEVEL_THEME[athlete?.level || 'recruit'];
+  const isSuper = profile?.role === 'super_admin';
+
+  const links = [
+    { hash:'#/dashboard', label:'Dashboard', emoji:'🏠' },
+    { hash:'#/reels',     label:'Reels',     emoji:'🎬' },
+    { hash:'#/kurs',      label:'Kurs',      emoji:'📚' },
+    { hash:'#/isplate',   label:'Isplate',   emoji:'💸' },
+    { hash:'#/profil',    label:'Profil',    emoji:'👤' },
+  ];
+  if (isSuper) links.push({ hash:'#/admin', label:'Admin', emoji:'⚙️', special:true });
+
   return (
-    <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-12">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <div className="text-xs text-white/50 uppercase tracking-wider">Prijavljen kao</div>
-          <div className="font-bold">{user?.email}</div>
-        </div>
-        <button onClick={logout} className="px-3 py-1.5 rounded-lg text-xs bg-white/5 border border-white/10">Logout</button>
-      </div>
-
-      <div className="glass-strong rounded-3xl p-8 sm:p-12 text-center">
-        <div className="text-6xl mb-4">🚧</div>
-        <h1 className="font-display text-3xl font-black mb-3">Portal u izgradnji</h1>
-        <p className="text-white/70 mb-6 leading-relaxed">
-          Trenutno gradimo <b className="text-brand">Phase 1</b>: athlete dashboard sa real-time podacima,
-          Reels submit, kurs, isplate.
-        </p>
-        <div className="text-xs text-white/40">Vraćaš se uskoro i vidiš sve.</div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-        {['Dashboard','Reels','Kurs','Isplate'].map(t => (
-          <div key={t} className="glass rounded-2xl p-4 text-center opacity-50">
-            <div className="font-bold text-sm">{t}</div>
-            <div className="text-[10px] text-white/40 mt-1">Phase 1</div>
+    <div className="relative z-10 min-h-screen">
+      {/* TOP BAR */}
+      <header className="sticky top-0 z-30 glass-strong border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <Logo />
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full glass">
+              <span className="text-lg">{theme.emoji}</span>
+              <span className="text-xs font-black" style={{color:theme.color}}>{theme.name}</span>
+            </div>
+            <button onClick={onLogout} className="px-3 py-1.5 rounded-lg text-xs bg-white/5 border border-white/10 hover:bg-white/10">Logout</button>
+            <button onClick={()=>setMenuOpen(true)} className="md:hidden p-2 rounded-lg bg-white/5 border border-white/10">☰</button>
           </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 grid md:grid-cols-[220px_1fr] gap-6">
+        {/* SIDEBAR — desktop */}
+        <aside className="hidden md:block">
+          <nav className="sticky top-24 space-y-1">
+            {links.map(l => {
+              const active = route.startsWith(l.hash.replace('#',''));
+              return (
+                <a key={l.hash} href={l.hash}
+                  className={"flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition " +
+                  (active ? "bg-white/10 text-white" : "text-white/60 hover:text-white hover:bg-white/5")}
+                  style={l.special && active ? {background:'linear-gradient(135deg,rgba(255,194,75,0.2),rgba(255,59,154,0.1))', color:'#ffc24b'} : {}}>
+                  <span className="text-lg">{l.emoji}</span>
+                  {l.label}
+                </a>
+              );
+            })}
+          </nav>
+        </aside>
+
+        {/* MAIN */}
+        <main className="min-w-0">{children}</main>
+      </div>
+
+      {/* MOBILE MENU OVERLAY */}
+      {menuOpen && (
+        <div className="md:hidden fixed inset-0 z-50 bg-bg0/95 backdrop-blur-xl flex flex-col" onClick={()=>setMenuOpen(false)}>
+          <div className="p-4 flex justify-end">
+            <button className="text-3xl">✕</button>
+          </div>
+          <nav className="px-6 space-y-2 flex-1">
+            {links.map(l => (
+              <a key={l.hash} href={l.hash} onClick={()=>setMenuOpen(false)}
+                className="flex items-center gap-3 px-5 py-4 rounded-xl text-lg font-bold bg-white/5 border border-white/10">
+                <span className="text-2xl">{l.emoji}</span>{l.label}
+              </a>
+            ))}
+          </nav>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === DASHBOARD ===
+function Dashboard({ athlete, profile }) {
+  const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0 });
+  const [activity, setActivity] = useState([]);
+  const [levelCfg, setLevelCfg] = useState(null);
+  const theme = LEVEL_THEME[athlete?.level || 'recruit'];
+
+  useEffect(() => {
+    if (!athlete) return;
+    loadAll();
+    const ch = supa.channel('dash_' + athlete.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'reels', filter: 'athlete_id=eq.'+athlete.id }, loadAll)
+      .on('postgres_changes', { event:'*', schema:'public', table:'sales', filter: 'athlete_id=eq.'+athlete.id }, loadAll)
+      .on('postgres_changes', { event:'*', schema:'public', table:'earnings_ledger', filter: 'athlete_id=eq.'+athlete.id }, loadAll)
+      .subscribe();
+    return () => { try { ch.unsubscribe(); } catch(e){} };
+  }, [athlete?.id]);
+
+  async function loadAll() {
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+    const [r1, r2, r3, sa, sm, ep, ea, el, lc] = await Promise.all([
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthStart.toISOString()),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed').gte('created_at', monthStart.toISOString()),
+      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','pending'),
+      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','available').is('payout_request_id', null),
+      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).in('status', ['available','paid','pending']),
+      supa.from('level_configs').select('*').eq('level_key', athlete.level).maybeSingle()
+    ]);
+    setStats({
+      reels_total: r1.count||0,
+      reels_month: r2.count||0,
+      reels_pending: r3.count||0,
+      sales_total: sa.count||0,
+      sales_month: sm.count||0,
+      earnings_pending: (ep.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      earnings_available: (ea.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      earnings_lifetime: (el.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      streak: 0
+    });
+    setLevelCfg(lc.data);
+
+    // recent activity
+    const { data: acts } = await supa.from('earnings_ledger').select('*').eq('athlete_id', athlete.id).order('created_at',{ascending:false}).limit(8);
+    setActivity(acts||[]);
+  }
+
+  if (!athlete) return <div className="glass rounded-2xl p-8 text-center text-white/60">Atleta nije pronađena. Kontaktiraj admina.</div>;
+
+  const reqs = levelCfg?.requirements_json || {};
+  const monthlyReq = levelCfg?.monthly_threshold_json || {};
+  const introActive = athlete.recruit_intro_period_until && new Date(athlete.recruit_intro_period_until) > new Date();
+
+  return (
+    <div className="space-y-6">
+      {/* GREETING */}
+      <div>
+        <div className="text-xs text-white/50 uppercase tracking-wider mb-1">Dobrodošao</div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black">{profile?.full_name || 'Atleta'}</h1>
+      </div>
+
+      {/* LEVEL CARD */}
+      <div className={"rounded-3xl p-6 sm:p-8 glass-strong border " + theme.glow}
+           style={{borderColor: theme.color+'40'}}>
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] font-bold mb-2" style={{color:theme.color}}>Tvoj nivo</div>
+            <div className="font-display text-3xl sm:text-4xl font-black" style={{color:theme.color}}>{theme.emoji} {theme.name} ATHLETE</div>
+            <div className="text-sm text-white/60 mt-2">
+              Provizija: <b style={{color:theme.color}}>{Math.round((levelCfg?.sales_commission_pct||0.35)*100)}%</b>
+              {' · '}€<b style={{color:theme.color}}>{((levelCfg?.reel_reward_cents||30)/100).toFixed(2)}</b> po reel-u
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wider text-white/50">XP</div>
+            <div className="font-black text-xl" style={{color:theme.color}}>{athlete.current_xp || 0}</div>
+          </div>
+        </div>
+
+        {introActive && (
+          <div className="mb-4 p-3 rounded-xl bg-gold/10 border border-gold/30 text-xs sm:text-sm">
+            🎁 <b className="text-gold">Recruit intro period aktivan</b> — reel earnings ti idu instant (bez sales requirement) još {Math.ceil((new Date(athlete.recruit_intro_period_until) - new Date())/86400000)} dana.
+          </div>
+        )}
+
+        {/* PROGRESS TO NEXT LEVEL */}
+        {athlete.level !== 'elite' && reqs.sales_total && (
+          <div className="space-y-3">
+            <div className="text-xs uppercase tracking-wider text-white/50">Napredak ka sledećem nivou</div>
+            {reqs.sales_total && (
+              <ProgressRow label="Prodaje" current={stats.sales_total} target={reqs.sales_total} color={theme.color}/>
+            )}
+            {reqs.reels_total && (
+              <ProgressRow label="Reelovi (total)" current={stats.reels_total} target={reqs.reels_total} color={theme.color}/>
+            )}
+            {reqs.reels_qualifying_month && (
+              <ProgressRow label="Reelovi (ovaj mesec)" current={stats.reels_month} target={reqs.reels_qualifying_month} color={theme.color}/>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* EARNINGS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard label="Available" value={formatEUR(stats.earnings_available)} accent="lime" emoji="💰"/>
+        <StatCard label="Pending" value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
+        <StatCard label="Lifetime" value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
+        <StatCard label="Streak" value={stats.streak + 'd'} accent="brand3" emoji="🔥"/>
+      </div>
+
+      {/* QUICK ACTIONS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <QuickAction href="#/reels" emoji="🎬" label="Submit Reel" color={theme.color}/>
+        <QuickAction href="#/kurs" emoji="📚" label="Otvori Kurs" color="#00f0ff"/>
+        <QuickAction href="#/isplate" emoji="💸" label="Isplate" color="#ffc24b"/>
+        <QuickAction href="#/profil" emoji="👤" label="Profil" color="#a855f7"/>
+      </div>
+
+      {/* OVERVIEW STATS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <MiniStat label="Reels (total)" value={stats.reels_total} sub={stats.reels_pending + ' pending'} />
+        <MiniStat label="Reels (mesec)" value={stats.reels_month} sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)} />
+        <MiniStat label="Prodaje (total)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
+        <MiniStat label="Tvoj kod" value={athlete.promo_code} sub="Affiliate"/>
+      </div>
+
+      {/* ACTIVITY */}
+      <div className="glass rounded-2xl p-5 sm:p-6">
+        <div className="font-display font-black text-lg mb-4">Skorije aktivnosti</div>
+        {activity.length === 0 ? (
+          <div className="text-sm text-white/50 py-6 text-center">
+            Nemaš još aktivnosti. Postavi svoj prvi Reel za zaradu! 🎬
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {activity.map(a => (
+              <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="text-xl">{a.source==='reel'?'🎬':a.source==='sale'?'💎':a.source==='team'?'👥':'⚡'}</div>
+                  <div>
+                    <div className="text-sm font-bold">{a.description || a.source}</div>
+                    <div className="text-xs text-white/50">{fromNow(a.created_at)}</div>
+                  </div>
+                </div>
+                <div className={"font-black text-sm " + (a.status==='pending' ? 'text-gold' : 'text-lime')}>
+                  {a.amount_cents > 0 ? '+' : ''}{formatEUR(a.amount_cents)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProgressRow({ label, current, target, color }) {
+  const pct = Math.min(100, Math.round((current/target)*100));
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5 text-xs">
+        <span className="text-white/70">{label}</span>
+        <span className="font-bold">{current} / {target}</span>
+      </div>
+      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: pct+'%', background: color }}></div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, accent, emoji }) {
+  const colors = { lime:'#a6ff3b', gold:'#ffc24b', brand:'#00f0ff', brand3:'#ff3b9a' };
+  return (
+    <div className="glass rounded-2xl p-4">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-base">{emoji}</span>
+        <span className="text-[10px] uppercase tracking-wider text-white/60 font-bold">{label}</span>
+      </div>
+      <div className="font-display font-black text-xl sm:text-2xl" style={{color: colors[accent]}}>{value}</div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub }) {
+  return (
+    <div className="glass rounded-xl px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-white/50">{label}</div>
+      <div className="font-black text-lg mt-1">{value}</div>
+      <div className="text-[10px] text-white/40 mt-0.5">{sub}</div>
+    </div>
+  );
+}
+
+function QuickAction({ href, emoji, label, color }) {
+  return (
+    <a href={href} className="glass card-hover rounded-2xl p-4 text-center hover:scale-105 transition-all" style={{borderColor: color+'30'}}>
+      <div className="text-3xl mb-1.5">{emoji}</div>
+      <div className="text-xs font-bold" style={{color: color}}>{label}</div>
+    </a>
+  );
+}
+
+// === REELS ===
+function ReelsPage({ athlete }) {
+  const [url, setUrl] = useState('');
+  const [caption, setCaption] = useState('');
+  const [reels, setReels] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(()=> { if(athlete) loadReels(); }, [athlete?.id]);
+
+  async function loadReels() {
+    const { data } = await supa.from('reels').select('*').eq('athlete_id', athlete.id).order('submitted_at',{ascending:false}).limit(50);
+    setReels(data||[]);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setSubmitting(true); setMsg(null);
+    const { error } = await supa.from('reels').insert({ athlete_id: athlete.id, url, caption: caption||null });
+    setSubmitting(false);
+    if (error) setMsg({type:'err', text: error.message});
+    else {
+      setMsg({type:'ok', text:'Reel poslat! Admin će ga proveriti uskoro.'});
+      setUrl(''); setCaption('');
+      loadReels();
+    }
+  }
+
+  const colors = { pending:'#ffc24b', approved:'#a6ff3b', rejected:'#ff4d5e' };
+  const labels = { pending:'Pending review', approved:'✓ Odobreno', rejected:'✗ Odbijeno' };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🎬 Moji Reels</h1>
+        <p className="text-sm text-white/60">Postavi Instagram Reel URL — admin proverava i ti zarađuješ.</p>
+      </div>
+
+      <div className="glass-strong rounded-2xl p-5 sm:p-6">
+        <div className="font-display font-bold text-lg mb-4">Submit novi Reel</div>
+        <form onSubmit={submit} className="space-y-3">
+          <input type="url" required value={url} onChange={e=>setUrl(e.target.value)}
+            placeholder="https://www.instagram.com/reel/..."
+            className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/>
+          <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Caption (opciono)"
+            rows={2} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/>
+          {msg && (
+            <div className={"text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>
+              {msg.text}
+            </div>
+          )}
+          <button type="submit" disabled={submitting||!url}
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
+            {submitting ? 'Šaljem...' : 'Submit Reel'}
+          </button>
+        </form>
+        <div className="mt-4 pt-4 border-t border-white/10 text-xs text-white/50 space-y-1">
+          <div>📋 Pravila:</div>
+          <div>• Minimum 20 sekundi · Pomeni VAMIT-5 · Tagiraj @vamit5_ · CTA na ekranu</div>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-5 sm:p-6">
+        <div className="font-display font-bold text-lg mb-4">Istorija ({reels.length})</div>
+        {reels.length === 0 ? (
+          <div className="text-sm text-white/50 py-8 text-center">Još uvek nemaš poslatih reelova.</div>
+        ) : (
+          <div className="space-y-2">
+            {reels.map(r => (
+              <div key={r.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-white/5">
+                <div className="min-w-0 flex-1">
+                  <a href={r.url} target="_blank" rel="noopener" className="text-sm text-brand hover:underline truncate block">{r.url}</a>
+                  <div className="text-[11px] text-white/40">{fromNow(r.submitted_at)}</div>
+                  {r.reject_reason && <div className="text-[11px] text-danger mt-1">Razlog: {r.reject_reason}</div>}
+                </div>
+                <div className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider" style={{background: colors[r.status]+'20', color: colors[r.status]}}>
+                  {labels[r.status]}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// === KURS ===
+function KursPage({ athlete }) {
+  const [modules, setModules] = useState([]);
+  const [openLesson, setOpenLesson] = useState(null);
+
+  useEffect(()=> { loadModules(); }, []);
+  async function loadModules() {
+    const { data: mods } = await supa.from('course_modules').select('*').order('order_idx');
+    const { data: lessons } = await supa.from('course_lessons').select('*').order('order_idx');
+    const map = (mods||[]).map(m => ({...m, lessons: (lessons||[]).filter(l=>l.module_id===m.id)}));
+    setModules(map);
+  }
+  const levelOrder = { recruit:0, pro:1, commando:2, elite:3 };
+  const myLevel = levelOrder[athlete?.level || 'recruit'];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">📚 Athlete Kurs</h1>
+        <p className="text-sm text-white/60">17 modula. Sve što treba da znaš.</p>
+      </div>
+
+      {modules.length === 0 ? (
+        <div className="glass rounded-2xl p-8 text-center text-white/60">Kurs još uvek nema sadržaja — admin uskoro dodaje.</div>
+      ) : (
+        <div className="space-y-3">
+          {modules.map(m => {
+            const locked = levelOrder[m.level_required] > myLevel;
+            return (
+              <div key={m.id} className={"glass rounded-2xl p-5 " + (locked ? 'opacity-50' : '')}>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-display font-black text-base sm:text-lg">{m.order_idx}. {m.name}</div>
+                    <div className="text-xs text-white/60 mt-1">{m.description}</div>
+                  </div>
+                  {locked && <div className="text-xs px-2 py-1 rounded bg-white/10">🔒 {m.level_required.toUpperCase()}+</div>}
+                </div>
+                {!locked && m.lessons && m.lessons.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {m.lessons.map(l => (
+                      <button key={l.id} onClick={()=>l.youtube_url && setOpenLesson(l)} disabled={!l.youtube_url}
+                        className="w-full flex items-center gap-3 p-2 rounded hover:bg-white/5 text-left disabled:opacity-50">
+                        <span>{l.youtube_url ? '▶' : '⏳'}</span>
+                        <span className="text-sm flex-1">{l.name}</span>
+                        {!l.youtube_url && <span className="text-[10px] text-white/40">uskoro</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!locked && (!m.lessons || m.lessons.length === 0) && (
+                  <div className="mt-3 text-xs text-white/40 italic">Lekcije se uskoro dodaju.</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {openLesson && (
+        <div className="fixed inset-0 z-50 bg-bg0/95 backdrop-blur-xl p-4 flex flex-col" onClick={()=>setOpenLesson(null)}>
+          <div className="flex justify-between items-center mb-4 max-w-4xl mx-auto w-full">
+            <div className="font-bold">{openLesson.name}</div>
+            <button className="text-2xl" onClick={()=>setOpenLesson(null)}>✕</button>
+          </div>
+          <div className="flex-1 flex items-center justify-center max-w-4xl mx-auto w-full">
+            <div className="w-full aspect-video bg-black rounded-xl overflow-hidden">
+              <iframe src={openLesson.youtube_url.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/')}
+                className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// === ISPLATE ===
+function IsplatePage({ athlete, profile, refreshProfile }) {
+  const [available, setAvailable] = useState(0);
+  const [history, setHistory] = useState([]);
+  const [msg, setMsg] = useState(null);
+  const [pending, setPending] = useState(null);
+
+  useEffect(()=>{ if (athlete) load(); }, [athlete?.id]);
+  async function load() {
+    const [{ data: ea }, { data: pr }, { data: pp }] = await Promise.all([
+      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','available').is('payout_request_id', null),
+      supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).order('requested_at',{ascending:false}).limit(20),
+      supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).eq('status','pending').maybeSingle()
+    ]);
+    setAvailable((ea||[]).reduce((s,x)=>s+x.amount_cents,0));
+    setHistory(pr||[]);
+    setPending(pp);
+  }
+
+  async function requestPayout() {
+    if (!athlete.bank_full_name || !athlete.bank_iban) {
+      setMsg({type:'err', text:'Prvo unesi bank info u Profilu.'});
+      return;
+    }
+    if (available < 1000) {
+      setMsg({type:'err', text:'Minimum za isplatu je €10.'});
+      return;
+    }
+    if (pending) {
+      setMsg({type:'err', text:'Već imaš pending zahtev.'});
+      return;
+    }
+    const { error } = await supa.from('payout_requests').insert({
+      athlete_id: athlete.id, amount_cents: available,
+      bank_info_snapshot: {
+        full_name: athlete.bank_full_name, iban: athlete.bank_iban,
+        bank: athlete.bank_name, phone: athlete.bank_phone
+      }
+    });
+    if (error) setMsg({type:'err', text: error.message});
+    else { setMsg({type:'ok', text:'Zahtev poslat! Admin obraduje uskoro.'}); load(); }
+  }
+
+  const sColor = { pending:'#ffc24b', approved:'#3b82f6', paid:'#a6ff3b', rejected:'#ff4d5e' };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">💸 Isplate</h1>
+        <p className="text-sm text-white/60">Pregled, zahtevi i istorija.</p>
+      </div>
+
+      <div className="glass-strong rounded-3xl p-6 sm:p-8 text-center" style={{boxShadow:'0 30px 60px -20px rgba(166,255,59,0.3)'}}>
+        <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-2 font-bold">Dostupno za isplatu</div>
+        <div className="font-display text-5xl sm:text-6xl font-black text-lime mb-4">{formatEUR(available)}</div>
+        {pending ? (
+          <div className="text-sm text-gold">⏳ Već imaš pending zahtev za {formatEUR(pending.amount_cents)}. Admin obrađuje.</div>
+        ) : (
+          <button onClick={requestPayout} disabled={available<1000}
+            className="px-8 py-3.5 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50">
+            📤 Zatraži isplatu
+          </button>
+        )}
+        {msg && (
+          <div className={"mt-4 text-xs " + (msg.type==='ok' ? 'text-lime' : 'text-danger')}>{msg.text}</div>
+        )}
+        <div className="mt-3 text-xs text-white/50">Minimum: €10 · Stiže za 24-48h posle approve-a</div>
+      </div>
+
+      <div className="glass rounded-2xl p-5 sm:p-6">
+        <div className="font-display font-bold text-lg mb-4">Istorija zahteva ({history.length})</div>
+        {history.length === 0 ? (
+          <div className="text-sm text-white/50 py-6 text-center">Još nemaš zahteva.</div>
+        ) : (
+          <div className="space-y-2">
+            {history.map(p => (
+              <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5">
+                <div>
+                  <div className="font-bold">{formatEUR(p.amount_cents)}</div>
+                  <div className="text-[11px] text-white/40">{formatDate(p.requested_at)}</div>
+                </div>
+                <div className="text-[10px] font-black px-2 py-1 rounded uppercase" style={{background:sColor[p.status]+'20', color:sColor[p.status]}}>
+                  {p.status}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// === PROFIL ===
+function ProfilPage({ athlete, profile, refreshProfile }) {
+  const [form, setForm] = useState({
+    full_name: profile?.full_name || '',
+    bank_full_name: athlete?.bank_full_name || '',
+    bank_iban: athlete?.bank_iban || '',
+    bank_name: athlete?.bank_name || '',
+    bank_phone: athlete?.bank_phone || ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(()=> {
+    setForm({
+      full_name: profile?.full_name || '',
+      bank_full_name: athlete?.bank_full_name || '',
+      bank_iban: athlete?.bank_iban || '',
+      bank_name: athlete?.bank_name || '',
+      bank_phone: athlete?.bank_phone || ''
+    });
+  }, [profile?.id, athlete?.id]);
+
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true); setMsg(null);
+    const [p, a] = await Promise.all([
+      supa.from('profiles').update({ full_name: form.full_name }).eq('id', profile.id),
+      supa.from('athletes').update({
+        bank_full_name: form.bank_full_name,
+        bank_iban: form.bank_iban,
+        bank_name: form.bank_name,
+        bank_phone: form.bank_phone
+      }).eq('id', athlete.id)
+    ]);
+    setSaving(false);
+    if (p.error || a.error) setMsg({type:'err', text: (p.error||a.error).message});
+    else { setMsg({type:'ok', text:'✓ Sačuvano!'}); await refreshProfile(profile.id); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">👤 Profil</h1>
+        <p className="text-sm text-white/60">Lični i bank podaci.</p>
+      </div>
+
+      <form onSubmit={save} className="space-y-5">
+        <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4">
+          <div className="font-display font-bold text-base">Osnovni podaci</div>
+          <Field label="Email"><input value={profile?.email||''} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
+          <Field label="Tvoj affiliate kod"><input value={athlete?.promo_code||''} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60 font-mono uppercase"/></Field>
+          <Field label="Tvoj nivo"><input value={LEVEL_THEME[athlete?.level||'recruit'].name} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
+          <Field label="Puno ime"><input value={form.full_name} onChange={e=>setForm({...form, full_name:e.target.value})} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
+        </div>
+
+        <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4">
+          <div className="font-display font-bold text-base">🏦 Bank info (za isplate)</div>
+          <Field label="Ime na računu"><input value={form.bank_full_name} onChange={e=>setForm({...form, bank_full_name:e.target.value})} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
+          <Field label="IBAN"><input value={form.bank_iban} onChange={e=>setForm({...form, bank_iban:e.target.value})} placeholder="RS35 ..." className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/></Field>
+          <Field label="Banka"><input value={form.bank_name} onChange={e=>setForm({...form, bank_name:e.target.value})} placeholder="Raiffeisen / NLB / ..." className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
+          <Field label="Telefon"><input value={form.bank_phone} onChange={e=>setForm({...form, bank_phone:e.target.value})} placeholder="+381 ..." className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
+        </div>
+
+        {msg && <div className={"text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>{msg.text}</div>}
+
+        <button type="submit" disabled={saving}
+          className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
+          {saving ? 'Snimam...' : '💾 Sačuvaj'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function Field({label, children}) {
+  return (
+    <div>
+      <label className="block text-[10px] uppercase tracking-wider text-white/60 font-bold mb-1.5">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+// === ADMIN ===
+function AdminPage() {
+  const [tab, setTab] = useState('reels');
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">⚙️ Super Admin</h1>
+        <p className="text-sm text-white/60">Mini admin za odobravanje. Pun admin panel dolazi u Fazi 3.</p>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[
+          {k:'reels', label:'🎬 Reels queue'},
+          {k:'payouts', label:'💸 Payout queue'},
+          {k:'athletes', label:'👥 Atlete'},
+        ].map(t => (
+          <button key={t.k} onClick={()=>setTab(t.k)}
+            className={"px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap " + (tab===t.k ? 'bg-gold text-bg0' : 'glass text-white/70')}>
+            {t.label}
+          </button>
         ))}
       </div>
+
+      {tab==='reels' && <AdminReelsQueue/>}
+      {tab==='payouts' && <AdminPayoutQueue/>}
+      {tab==='athletes' && <AdminAthletes/>}
     </div>
   );
 }
 
-function NotConfigured() {
+function AdminReelsQueue() {
+  const [reels, setReels] = useState([]);
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    const { data } = await supa.from('reels').select('*, profiles!reels_athlete_id_fkey(email, full_name)').eq('status','pending').order('submitted_at');
+    setReels(data||[]);
+  }
+  async function decide(id, status, reason=null) {
+    await supa.from('reels').update({ status, reviewed_at: new Date().toISOString(), reject_reason: reason }).eq('id', id);
+    if (status === 'approved') {
+      // Dodaj earnings
+      const reel = reels.find(r=>r.id===id);
+      const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', 'recruit').maybeSingle();
+      const reward = cfg?.reel_reward_cents || 30;
+      await supa.from('earnings_ledger').insert({
+        athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
+        ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
+      });
+    }
+    load();
+  }
+
+  if (reels.length===0) return <div className="glass rounded-2xl p-8 text-center text-white/60">Nema Reel-ova za review.</div>;
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4 relative z-10">
-      <div className="glass-strong rounded-3xl p-8 max-w-lg text-center">
-        <div className="text-5xl mb-4">⚙️</div>
-        <h2 className="font-display text-2xl font-black mb-3">Konfiguracija nedostaje</h2>
-        <p className="text-white/70 text-sm leading-relaxed mb-4">
-          Admin treba da postavi <code className="text-brand">SUPABASE_ANON_KEY</code> u <code>index.html</code> fajlu.
-        </p>
-        <p className="text-xs text-white/50">
-          Otvori GitHub repo, edituj <code>index.html</code>, pronađi liniju koja kaže<br/>
-          <code className="text-brand">REPLACE_WITH_ANON_KEY</code> i zameni je sa pravim ključem iz Supabase.
-        </p>
-      </div>
+    <div className="space-y-3">
+      {reels.map(r => (
+        <div key={r.id} className="glass-strong rounded-2xl p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="text-sm">
+              <div className="font-bold">{r.profiles?.full_name || r.profiles?.email || 'Atleta'}</div>
+              <div className="text-[11px] text-white/40">{fromNow(r.submitted_at)}</div>
+            </div>
+          </div>
+          <a href={r.url} target="_blank" rel="noopener" className="text-xs text-brand hover:underline break-all block mb-3">{r.url}</a>
+          {r.caption && <div className="text-xs text-white/60 mb-3">{r.caption}</div>}
+          <div className="flex gap-2">
+            <button onClick={()=>decide(r.id,'approved')} className="flex-1 py-2 rounded-lg bg-lime/15 border border-lime/40 text-lime font-bold text-sm">✓ Approve</button>
+            <button onClick={()=>{const reason=prompt('Razlog odbijanja:'); if(reason) decide(r.id,'rejected',reason);}} className="flex-1 py-2 rounded-lg bg-danger/15 border border-danger/40 text-danger font-bold text-sm">✗ Reject</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
+function AdminPayoutQueue() {
+  const [items, setItems] = useState([]);
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    const { data } = await supa.from('payout_requests').select('*, profiles!payout_requests_athlete_id_fkey(email, full_name)').eq('status','pending').order('requested_at');
+    setItems(data||[]);
+  }
+  async function decide(id, status) {
+    const upd = { status, approved_at: new Date().toISOString() };
+    if (status==='paid') upd.paid_at = new Date().toISOString();
+    await supa.from('payout_requests').update(upd).eq('id', id);
+    if (status==='paid') {
+      // Mark earnings as paid
+      const item = items.find(i=>i.id===id);
+      await supa.from('earnings_ledger').update({ status:'paid', payout_request_id: id, paid_at: new Date().toISOString() })
+        .eq('athlete_id', item.athlete_id).eq('status','available').is('payout_request_id', null);
+    }
+    load();
+  }
+
+  if (items.length===0) return <div className="glass rounded-2xl p-8 text-center text-white/60">Nema payout zahteva.</div>;
+  return (
+    <div className="space-y-3">
+      {items.map(p => (
+        <div key={p.id} className="glass-strong rounded-2xl p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <div className="font-bold">{p.profiles?.full_name || p.profiles?.email}</div>
+              <div className="text-2xl font-display font-black text-lime">{formatEUR(p.amount_cents)}</div>
+            </div>
+            <div className="text-[11px] text-white/40">{fromNow(p.requested_at)}</div>
+          </div>
+          <div className="text-xs text-white/70 space-y-1 mb-3 bg-bg0/40 rounded-lg p-3">
+            <div><b>Ime:</b> {p.bank_info_snapshot?.full_name}</div>
+            <div><b>IBAN:</b> <code className="text-brand">{p.bank_info_snapshot?.iban}</code></div>
+            <div><b>Banka:</b> {p.bank_info_snapshot?.bank}</div>
+            {p.bank_info_snapshot?.phone && <div><b>Tel:</b> {p.bank_info_snapshot.phone}</div>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>{ if(confirm('Označiti kao plaćeno? (prvo uradi bank transfer)')) decide(p.id,'paid'); }}
+              className="flex-1 py-2 rounded-lg bg-lime/15 border border-lime/40 text-lime font-bold text-sm">✓ Mark paid</button>
+            <button onClick={()=>decide(p.id,'rejected')} className="flex-1 py-2 rounded-lg bg-danger/15 border border-danger/40 text-danger font-bold text-sm">✗ Reject</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdminAthletes() {
+  const [list, setList] = useState([]);
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    const { data } = await supa.from('athletes').select('*, profiles!athletes_id_fkey(email, full_name)').order('created_at',{ascending:false}).limit(100);
+    setList(data||[]);
+  }
+  return (
+    <div className="glass rounded-2xl p-5 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="text-left text-xs text-white/50 uppercase">
+          <th className="py-2">Atleta</th><th>Kod</th><th>Nivo</th><th>XP</th><th>Pridruzio</th>
+        </tr></thead>
+        <tbody>
+        {list.map(a => (
+          <tr key={a.id} className="border-t border-white/5">
+            <td className="py-3">
+              <div className="font-bold">{a.profiles?.full_name || '—'}</div>
+              <div className="text-[11px] text-white/40">{a.profiles?.email}</div>
+            </td>
+            <td><code className="text-brand text-xs">{a.promo_code}</code></td>
+            <td><span className="text-xs font-bold" style={{color: LEVEL_THEME[a.level].color}}>{LEVEL_THEME[a.level].name}</span></td>
+            <td className="text-xs">{a.current_xp || 0}</td>
+            <td className="text-xs text-white/50">{formatDate(a.joined_at)}</td>
+          </tr>
+        ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// === APP ROOT ===
 function App() {
   const hash = useHash();
-  const { user, loading } = useAuth();
+  const { user, profile, athlete, loading, refreshProfile } = useAuth();
+  const route = hash.replace('#','').split('?')[0] || '/';
 
   useEffect(() => {
     var el = document.getElementById('loading');
     if (el && !loading) el.style.display='none';
   }, [loading]);
 
-  // Posle login-a: ako je user na landing (#/), automatski u portal
   useEffect(() => {
-    if (!loading && user) {
-      const route = (window.location.hash || '#/').replace('#', '').split('?')[0] || '/';
-      if (route === '/' || route === '/login') {
-        window.location.hash = '#/portal';
-      }
+    if (!loading && user && (route === '/' || route === '/login')) {
+      window.location.hash = '#/dashboard';
     }
-  }, [user, loading]);
+  }, [user, loading, route]);
 
-  // Konfiguracija nedostaje
-  if (!supa) {
+  async function logout() {
+    await supa.auth.signOut();
+    window.location.hash = '#/';
+  }
+
+  if (loading) return null;
+
+  // Public pages
+  if (!user) {
     return (
-      <div className="min-h-screen">
-        <Nav user={null} />
-        <NotConfigured />
+      <div>
+        <PublicNav user={null}/>
+        {route === '/login' ? <LoginPage/> : <LandingPage/>}
       </div>
     );
   }
 
-  // Učitavanje
-  if (loading) return null;
-
-  // Routing
-  let page;
-  const route = hash.replace('#', '').split('?')[0] || '/';
-
-  if (route === '/login') {
-    if (user) { window.location.hash = '#/portal'; return null; }
-    page = <LoginPage />;
-  } else if (route === '/portal') {
-    if (!user) { window.location.hash = '#/login'; return null; }
-    page = <PortalPage user={user} />;
-  } else {
-    page = <LandingPage />;
-  }
+  // Authenticated pages
+  const renderPage = () => {
+    if (route === '/dashboard' || route === '/') return <Dashboard athlete={athlete} profile={profile}/>;
+    if (route === '/reels') return <ReelsPage athlete={athlete}/>;
+    if (route === '/kurs') return <KursPage athlete={athlete}/>;
+    if (route === '/isplate') return <IsplatePage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
+    if (route === '/profil') return <ProfilPage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
+    if (route === '/admin' && profile?.role === 'super_admin') return <AdminPage/>;
+    return <Dashboard athlete={athlete} profile={profile}/>;
+  };
 
   return (
-    <div className="min-h-screen">
-      <Nav user={user} />
-      {page}
-      <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-8 text-xs text-white/40 text-center mt-12">
-        © {new Date().getFullYear()} VAMIT-5 Athlete Portal · Phase 0
-      </footer>
-    </div>
+    <PortalShell profile={profile} athlete={athlete} route={route} onLogout={logout}>
+      {renderPage()}
+    </PortalShell>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
