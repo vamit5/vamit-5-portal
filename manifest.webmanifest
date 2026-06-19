@@ -1,0 +1,27 @@
+{
+  "name": "VAMIT-5 Athlete Portal",
+  "short_name": "VAMIT-5",
+  "description": "Athlete portal — zaradi po reel-u + provizija.",
+  "start_url": "/#/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
+  "categories": ["business", "fitness", "social"],
+  "lang": "sr-Latn",
+  "icons": [
+    {
+      "src": "https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
