@@ -587,6 +587,8 @@ function Dashboard({ athlete, profile }) {
     });
   }
 
+  // ADMIN — pokazi platform overview umesto "atleta nije pronadjena"
+  if (!athlete && profile?.role === 'super_admin') return <AdminOverview profile={profile}/>;
   if (!athlete) return <div className="glass rounded-2xl p-8 text-center text-white/60">Atleta nije pronađena. Kontaktiraj admina.</div>;
 
   const reqs = levelCfg?.requirements_json || {};
@@ -803,19 +805,37 @@ function QuickAction({ href, emoji, label, color }) {
 }
 
 // === REELS ===
-function ReelsPage({ athlete }) {
+function ReelsPage({ athlete, profile }) {
   const [url, setUrl] = useState('');
   const [caption, setCaption] = useState('');
   const [reels, setReels] = useState([]);
+  const [earningsMap, setEarningsMap] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
 
   useEffect(()=> { if(athlete) loadReels(); }, [athlete?.id]);
 
   async function loadReels() {
-    const { data } = await supa.from('reels').select('*').eq('athlete_id', athlete.id).order('submitted_at',{ascending:false}).limit(50);
-    setReels(data||[]);
+    const [{ data: reelsData }, { data: earn }] = await Promise.all([
+      supa.from('reels').select('*').eq('athlete_id', athlete.id).order('submitted_at',{ascending:false}).limit(50),
+      supa.from('earnings_ledger').select('ref_id, amount_cents, status').eq('athlete_id', athlete.id).eq('source','reel').eq('ref_table','reels')
+    ]);
+    setReels(reelsData||[]);
+    const map = {};
+    (earn||[]).forEach(e => { if (e.ref_id) map[e.ref_id] = e; });
+    setEarningsMap(map);
   }
+
+  // ADMIN guard
+  if (!athlete && profile?.role === 'super_admin') return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🎬 Reels</h1>
+        <p className="text-sm text-white/60">Admin — koristi <a href="#/admin" className="text-brand underline">Admin → Reels Queue</a> za odobravanje.</p>
+      </div>
+      <div className="glass rounded-2xl p-8 text-center text-white/60">Admin ne postavlja reels-e. 👑</div>
+    </div>
+  );
 
   async function submit(e) {
     e.preventDefault();
@@ -870,18 +890,37 @@ function ReelsPage({ athlete }) {
           <div className="text-sm text-white/50 py-8 text-center">Još uvek nemaš poslatih reelova.</div>
         ) : (
           <div className="space-y-2">
-            {reels.map(r => (
-              <div key={r.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-white/5">
-                <div className="min-w-0 flex-1">
-                  <a href={r.url} target="_blank" rel="noopener" className="text-sm text-brand hover:underline truncate block">{r.url}</a>
-                  <div className="text-[11px] text-white/40">{fromNow(r.submitted_at)}</div>
-                  {r.reject_reason && <div className="text-[11px] text-danger mt-1">Razlog: {r.reject_reason}</div>}
+            {reels.map(r => {
+              const earn = earningsMap[r.id];
+              return (
+                <div key={r.id} className="p-3 rounded-xl bg-white/5 border border-white/5">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <a href={r.url} target="_blank" rel="noopener" className="text-sm text-brand hover:underline break-all block">🔗 {r.url}</a>
+                      {r.caption && <div className="text-[11px] text-white/60 mt-1 line-clamp-2">{r.caption}</div>}
+                    </div>
+                    <div className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider shrink-0" style={{background: colors[r.status]+'20', color: colors[r.status]}}>
+                      {labels[r.status]}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-[11px]">
+                    <div className="text-white/40">📅 Poslat: {fromNow(r.submitted_at)}</div>
+                    {r.reviewed_at && <div className="text-white/40">✓ Pregledan: {fromNow(r.reviewed_at)}</div>}
+                  </div>
+                  {r.status === 'approved' && earn && (
+                    <div className="mt-2 px-3 py-2 rounded-lg bg-lime/10 border border-lime/30 flex items-center justify-between text-sm">
+                      <div className="text-lime font-bold">💰 Zarada</div>
+                      <div className="text-lime font-black">+{formatEUR(earn.amount_cents)} <span className="text-[10px] text-white/50">({earn.status})</span></div>
+                    </div>
+                  )}
+                  {r.reject_reason && (
+                    <div className="mt-2 px-3 py-2 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger">
+                      <b>Razlog odbijanja:</b> {r.reject_reason}
+                    </div>
+                  )}
                 </div>
-                <div className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider" style={{background: colors[r.status]+'20', color: colors[r.status]}}>
-                  {labels[r.status]}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1489,6 +1528,196 @@ function Field({label, children}) {
 }
 
 // === ADMIN ===
+// =====================================================
+// === ADMIN OVERVIEW (Platform Stats za Dashboard) ===
+// =====================================================
+function AdminOverview({ profile }) {
+  const [stats, setStats] = useState({
+    athletes_total: 0, athletes_recruit: 0, athletes_pro: 0, athletes_commando: 0, athletes_elite: 0,
+    reels_pending: 0, reels_total: 0, reels_today: 0,
+    sales_total: 0, sales_month: 0,
+    earnings_paid: 0, earnings_pending: 0, earnings_available: 0,
+    payouts_pending: 0, payouts_paid: 0
+  });
+  const [recentReels, setRecentReels] = useState([]);
+  const [recentPayouts, setRecentPayouts] = useState([]);
+
+  useEffect(()=>{
+    load();
+    const ch = supa.channel('admin_overview')
+      .on('postgres_changes', { event:'*', schema:'public', table:'reels' }, load)
+      .on('postgres_changes', { event:'*', schema:'public', table:'sales' }, load)
+      .on('postgres_changes', { event:'*', schema:'public', table:'payout_requests' }, load)
+      .subscribe();
+    return () => { try { ch.unsubscribe(); } catch(e){} };
+  }, []);
+
+  async function load() {
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+
+    const [aT, aR, aP, aC, aE, rP, rT, rTd, sT, sM, ePaid, ePending, eAvail, pP, recR, recPay] = await Promise.all([
+      supa.from('athletes').select('id',{count:'exact', head:true}),
+      supa.from('athletes').select('id',{count:'exact', head:true}).eq('level','recruit'),
+      supa.from('athletes').select('id',{count:'exact', head:true}).eq('level','pro'),
+      supa.from('athletes').select('id',{count:'exact', head:true}).eq('level','commando'),
+      supa.from('athletes').select('id',{count:'exact', head:true}).eq('level','elite'),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('status','pending'),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('status','approved'),
+      supa.from('reels').select('id',{count:'exact', head:true}).gte('submitted_at', todayStart.toISOString()),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('status','confirmed'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('status','confirmed').gte('created_at', monthStart.toISOString()),
+      supa.from('earnings_ledger').select('amount_cents').eq('status','paid'),
+      supa.from('earnings_ledger').select('amount_cents').eq('status','pending'),
+      supa.from('earnings_ledger').select('amount_cents').eq('status','available').is('payout_request_id', null),
+      supa.from('payout_requests').select('id',{count:'exact', head:true}).eq('status','pending'),
+      supa.from('reels').select('*, profiles!reels_athlete_id_fkey(full_name, email)').eq('status','pending').order('submitted_at',{ascending:true}).limit(5),
+      supa.from('payout_requests').select('*, profiles!payout_requests_athlete_id_fkey(full_name, email)').eq('status','pending').order('requested_at',{ascending:true}).limit(5)
+    ]);
+
+    setStats({
+      athletes_total: aT.count||0,
+      athletes_recruit: aR.count||0, athletes_pro: aP.count||0, athletes_commando: aC.count||0, athletes_elite: aE.count||0,
+      reels_pending: rP.count||0, reels_total: rT.count||0, reels_today: rTd.count||0,
+      sales_total: sT.count||0, sales_month: sM.count||0,
+      earnings_paid: (ePaid.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      earnings_pending: (ePending.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      earnings_available: (eAvail.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      payouts_pending: pP.count||0
+    });
+    setRecentReels(recR.data||[]);
+    setRecentPayouts(recPay.data||[]);
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="text-xs text-white/50 uppercase tracking-wider mb-1">👑 Super Admin</div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black">{profile?.full_name || 'Admin'} Dashboard</h1>
+        <p className="text-sm text-white/60 mt-1">Pregled cele platforme. Real-time stats.</p>
+      </div>
+
+      {/* HERO STATS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard label="Atlete" value={stats.athletes_total} accent="brand" emoji="👥"/>
+        <StatCard label="Reels danas" value={stats.reels_today} accent="lime" emoji="🎬"/>
+        <StatCard label="Prodaja (mesec)" value={stats.sales_month} accent="gold" emoji="💎"/>
+        <StatCard label="Total isplaceno" value={formatEUR(stats.earnings_paid)} accent="brand3" emoji="💸"/>
+      </div>
+
+      {/* CALL TO ACTION CARDS */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <a href="#/admin" onClick={()=>setTimeout(()=>{const b=document.querySelector('button:nth-child(1)');},10)}
+          className="glass-strong rounded-2xl p-5 border border-gold/30 hover:bg-gold/5 transition flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-gold font-bold">Čeka pregled</div>
+            <div className="font-display font-black text-3xl text-gold">{stats.reels_pending}</div>
+            <div className="text-xs text-white/60 mt-1">Reels-ova za odobravanje</div>
+          </div>
+          <div className="text-5xl">🎬</div>
+        </a>
+        <a href="#/admin"
+          className="glass-strong rounded-2xl p-5 border border-brand3/30 hover:bg-brand3/5 transition flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-brand3 font-bold">Čeka isplatu</div>
+            <div className="font-display font-black text-3xl text-brand3">{stats.payouts_pending}</div>
+            <div className="text-xs text-white/60 mt-1">Payout zahteva</div>
+          </div>
+          <div className="text-5xl">💸</div>
+        </a>
+      </div>
+
+      {/* LEVEL BREAKDOWN */}
+      <div className="glass rounded-2xl p-5">
+        <div className="font-display font-bold text-base mb-3">🎖️ Raspodela po nivoima</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <LevelBox theme={LEVEL_THEME.recruit} count={stats.athletes_recruit}/>
+          <LevelBox theme={LEVEL_THEME.pro} count={stats.athletes_pro}/>
+          <LevelBox theme={LEVEL_THEME.commando} count={stats.athletes_commando}/>
+          <LevelBox theme={LEVEL_THEME.elite} count={stats.athletes_elite}/>
+        </div>
+      </div>
+
+      {/* MONEY OVERVIEW */}
+      <div className="glass rounded-2xl p-5">
+        <div className="font-display font-bold text-base mb-3">💰 Novac (sve atlete)</div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/50">Available (za isplatu)</div>
+            <div className="font-display font-black text-xl text-gold">{formatEUR(stats.earnings_available)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/50">Pending</div>
+            <div className="font-display font-black text-xl text-white/70">{formatEUR(stats.earnings_pending)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/50">Lifetime isplaceno</div>
+            <div className="font-display font-black text-xl text-lime">{formatEUR(stats.earnings_paid)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* RECENT QUEUES */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-display font-bold text-base">🎬 Najnoviji reels (pending)</div>
+            <a href="#/admin" className="text-xs text-brand">Otvori sve →</a>
+          </div>
+          {recentReels.length === 0 ? <div className="text-center py-6 text-xs text-white/50">Nema pending reels-a 👌</div> : (
+            <div className="space-y-2">
+              {recentReels.map(r => (
+                <div key={r.id} className="px-3 py-2 rounded-lg bg-white/5">
+                  <div className="font-bold text-sm truncate">{r.profiles?.full_name || r.profiles?.email}</div>
+                  <a href={r.url} target="_blank" rel="noopener" className="text-[10px] text-brand truncate block">{r.url}</a>
+                  <div className="text-[10px] text-white/40">{fromNow(r.submitted_at)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-display font-bold text-base">💸 Najnoviji payout zahtevi</div>
+            <a href="#/admin" className="text-xs text-brand">Otvori sve →</a>
+          </div>
+          {recentPayouts.length === 0 ? <div className="text-center py-6 text-xs text-white/50">Nema čekajućih isplata 👌</div> : (
+            <div className="space-y-2">
+              {recentPayouts.map(p => (
+                <div key={p.id} className="px-3 py-2 rounded-lg bg-white/5 flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm truncate">{p.profiles?.full_name || p.profiles?.email}</div>
+                    <div className="text-[10px] text-white/40">{fromNow(p.requested_at)}</div>
+                  </div>
+                  <div className="text-sm font-black text-gold shrink-0">{formatEUR(p.amount_cents)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* QUICK LINKS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <a href="#/admin" className="glass card-hover rounded-2xl p-4 text-center"><div className="text-3xl mb-1">⚙️</div><div className="text-xs font-bold">Admin Panel</div></a>
+        <a href="#/admin" className="glass card-hover rounded-2xl p-4 text-center"><div className="text-3xl mb-1">📨</div><div className="text-xs font-bold">Notif. Templates</div></a>
+        <a href="#/admin" className="glass card-hover rounded-2xl p-4 text-center"><div className="text-3xl mb-1">📚</div><div className="text-xs font-bold">Kurs CMS</div></a>
+        <a href="#/admin" className="glass card-hover rounded-2xl p-4 text-center"><div className="text-3xl mb-1">🔗</div><div className="text-xs font-bold">Linkovi</div></a>
+      </div>
+    </div>
+  );
+}
+
+function LevelBox({ theme, count }) {
+  return (
+    <div className="glass rounded-xl p-3 text-center border" style={{borderColor: theme.color+'30'}}>
+      <div className="text-2xl">{theme.emoji}</div>
+      <div className="text-[10px] uppercase tracking-wider font-bold" style={{color: theme.color}}>{theme.name}</div>
+      <div className="font-display font-black text-xl mt-1">{count}</div>
+    </div>
+  );
+}
+
 function AdminPage() {
   const [tab, setTab] = useState('reels');
   return (
@@ -1694,18 +1923,25 @@ function AdminAthletes() {
 }
 
 function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
+  const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState({ reels:0, reels_pending:0, sales:0, earned_total:0, earned_paid:0, earned_pending:0, earned_available:0 });
+  const [reelsList, setReelsList] = useState([]);
+  const [salesList, setSalesList] = useState([]);
+  const [earnList, setEarnList] = useState([]);
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({ ...athlete });
   const [saving, setSaving] = useState(false);
 
   useEffect(()=> { load(); }, [athlete.id]);
   async function load() {
-    const [r1, r2, s1, e1] = await Promise.all([
+    const [r1, r2, s1, e1, allReels, allSales, allEarn] = await Promise.all([
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
-      supa.from('earnings_ledger').select('amount_cents, status, payout_request_id').eq('athlete_id', athlete.id)
+      supa.from('earnings_ledger').select('amount_cents, status, payout_request_id').eq('athlete_id', athlete.id),
+      supa.from('reels').select('*').eq('athlete_id', athlete.id).order('submitted_at',{ascending:false}).limit(100),
+      supa.from('sales').select('*').eq('athlete_id', athlete.id).order('created_at',{ascending:false}).limit(100),
+      supa.from('earnings_ledger').select('*').eq('athlete_id', athlete.id).order('created_at',{ascending:false}).limit(100)
     ]);
     const earn = e1.data || [];
     setStats({
@@ -1717,6 +1953,26 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
       earned_pending: earn.filter(x=>x.status==='pending').reduce((s,x)=>s+x.amount_cents,0),
       earned_available: earn.filter(x=>x.status==='available' && !x.payout_request_id).reduce((s,x)=>s+x.amount_cents,0)
     });
+    setReelsList(allReels.data||[]);
+    setSalesList(allSales.data||[]);
+    setEarnList(allEarn.data||[]);
+  }
+
+  async function reviewReel(id, status, reason=null) {
+    const reel = reelsList.find(r=>r.id===id);
+    await supa.from('reels').update({ status, reviewed_at: new Date().toISOString(), reject_reason: reason }).eq('id', id);
+    if (status === 'approved' && reel) {
+      const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', athlete.level).maybeSingle();
+      const reward = cfg?.reel_reward_cents || 30;
+      await supa.from('earnings_ledger').insert({
+        athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
+        ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
+      });
+      await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
+    } else if (status === 'rejected' && reel) {
+      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+    }
+    load();
   }
 
   async function saveChanges() {
@@ -1743,7 +1999,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-bg0/90 backdrop-blur-xl flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
-      <div className="glass-strong rounded-2xl max-w-2xl w-full p-5 sm:p-7 my-auto" onClick={e=>e.stopPropagation()}>
+      <div className="glass-strong rounded-2xl max-w-3xl w-full p-5 sm:p-7 my-auto" onClick={e=>e.stopPropagation()}>
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-xs text-white/50 uppercase tracking-wider">Atleta detalji</div>
@@ -1753,6 +2009,21 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
           <button onClick={onClose} className="text-2xl text-white/60 hover:text-white">✕</button>
         </div>
 
+        {/* TABS */}
+        <div className="flex gap-1 mb-4 border-b border-white/10 overflow-x-auto">
+          {[
+            ['overview','📊 Pregled'],
+            ['reels','🎬 Reels ('+reelsList.length+')'],
+            ['sales','💎 Prodaje ('+salesList.length+')'],
+            ['earnings','💰 Earnings ('+earnList.length+')'],
+            ['edit','✏️ Edit']
+          ].map(([k,l]) => (
+            <button key={k} onClick={()=>setTab(k)}
+              className={"px-3 py-2 text-xs font-bold whitespace-nowrap border-b-2 transition " + (tab===k ? 'border-brand text-brand' : 'border-transparent text-white/60 hover:text-white')}>{l}</button>
+          ))}
+        </div>
+
+        {tab==='overview' && <>
         {/* STATS GRID */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
           <div className="glass rounded-xl p-3">
@@ -1798,25 +2069,79 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
           </div>
         </div>
 
-        {/* INFO / EDIT */}
-        {!editMode ? (
-          <>
-            <div className="space-y-3 mb-5">
-              <DetailRow label="Status" value={athlete.status} mono/>
-              <DetailRow label="Rewardful Link" value={athlete.rewardful_token || '— (nije postavljen)'} mono/>
-              <DetailRow label="Rewardful Affiliate ID" value={athlete.rewardful_affiliate_id || '—'} mono/>
-              <DetailRow label="Telefon" value={athlete.bank_phone || '—'}/>
-              <DetailRow label="🏦 Bank Ime" value={athlete.bank_full_name || '—'}/>
-              <DetailRow label="🏦 IBAN" value={athlete.bank_iban || '—'} mono/>
-              <DetailRow label="🏦 Banka" value={athlete.bank_name || '—'}/>
-              <DetailRow label="Stripe Customer ID" value={athlete.stripe_customer_id || '—'} mono/>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={()=>setEditMode(true)} className="flex-1 py-2.5 rounded-xl bg-brand/15 border border-brand/40 text-brand font-bold text-sm">✏️ Edituj</button>
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Zatvori</button>
-            </div>
-          </>
-        ) : (
+        {/* INFO LIST */}
+        <div className="space-y-3 mb-3">
+          <DetailRow label="Status" value={athlete.status} mono/>
+          <DetailRow label="Rewardful Link" value={athlete.rewardful_token || '— (nije postavljen)'} mono/>
+          <DetailRow label="Telefon" value={athlete.bank_phone || '—'}/>
+          <DetailRow label="🏦 Bank Ime" value={athlete.bank_full_name || '—'}/>
+          <DetailRow label="🏦 IBAN" value={athlete.bank_iban || '—'} mono/>
+          <DetailRow label="🏦 Banka" value={athlete.bank_name || '—'}/>
+        </div>
+        </>}
+
+        {tab==='reels' && (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {reelsList.length === 0 ? <div className="text-center py-8 text-white/50 text-sm">Nema reels-a.</div> : reelsList.map(r => {
+              const colors = { pending:'#ffc24b', approved:'#a6ff3b', rejected:'#ff4d5e' };
+              return (
+                <div key={r.id} className="glass rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <a href={r.url} target="_blank" rel="noopener" className="text-xs text-brand hover:underline break-all flex-1">{r.url}</a>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded uppercase shrink-0" style={{background: colors[r.status]+'20', color: colors[r.status]}}>{r.status}</span>
+                  </div>
+                  {r.caption && <div className="text-[11px] text-white/60 mb-2">{r.caption}</div>}
+                  <div className="text-[10px] text-white/40 mb-2">📅 {formatDate(r.submitted_at)}{r.reviewed_at?' · ✓ '+formatDate(r.reviewed_at):''}</div>
+                  {r.status === 'pending' && (
+                    <div className="flex gap-2">
+                      <button onClick={()=>reviewReel(r.id, 'approved')} className="flex-1 py-1.5 rounded bg-lime/15 border border-lime/40 text-lime text-xs font-bold">✓ Odobri</button>
+                      <button onClick={()=>{const reason=prompt('Razlog odbijanja:'); if(reason) reviewReel(r.id, 'rejected', reason);}} className="flex-1 py-1.5 rounded bg-danger/15 border border-danger/40 text-danger text-xs font-bold">✗ Odbij</button>
+                    </div>
+                  )}
+                  {r.reject_reason && <div className="text-[11px] text-danger mt-2">❌ {r.reject_reason}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==='sales' && (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {salesList.length === 0 ? <div className="text-center py-8 text-white/50 text-sm">Nema prodaja.</div> : salesList.map(s => (
+              <div key={s.id} className="glass rounded-xl p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-bold">💎 Prodaja</div>
+                  <div className="text-[10px] text-white/50">📅 {formatDate(s.created_at)} · status: <b>{s.status}</b></div>
+                  {s.product_name && <div className="text-[11px] text-white/60">{s.product_name}</div>}
+                </div>
+                <div className="text-sm font-black text-lime shrink-0">{formatEUR(s.amount_cents||0)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==='earnings' && (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {earnList.length === 0 ? <div className="text-center py-8 text-white/50 text-sm">Nema earnings zapisa.</div> : earnList.map(e => {
+              const statusColor = { paid:'text-lime', available:'text-gold', pending:'text-white/60' }[e.status] || 'text-white/60';
+              return (
+                <div key={e.id} className="glass rounded-xl p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold">{e.source === 'reel' ? '🎬 Reel' : e.source === 'sale' ? '💎 Sale' : '⚡ '+e.source}</div>
+                    <div className="text-[11px] text-white/60">{e.description}</div>
+                    <div className="text-[10px] text-white/40">📅 {formatDate(e.created_at)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={"text-sm font-black " + statusColor}>{formatEUR(e.amount_cents)}</div>
+                    <div className={"text-[9px] uppercase font-bold " + statusColor}>{e.status}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==='edit' && (
           <>
             <div className="space-y-3 mb-5">
               <EditField label="Puno ime" value={form.full_name||''} onChange={v=>setForm({...form, full_name:v})}/>
@@ -1832,7 +2157,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
               <button onClick={saveChanges} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand via-brand2 to-brand3 text-bg0 font-bold text-sm">
                 {saving ? 'Snimam...' : '💾 Sačuvaj'}
               </button>
-              <button onClick={()=>{setEditMode(false); setForm({...athlete});}} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
+              <button onClick={()=>{setForm({...athlete}); setTab('overview');}} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm">Otkaži</button>
             </div>
           </>
         )}
@@ -1873,7 +2198,10 @@ function AchievementsPage({ athlete }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => { if (athlete) load(); }, [athlete?.id]);
+  useEffect(() => {
+    if (athlete) load();
+    else setLoading(false);
+  }, [athlete?.id]);
 
   async function load() {
     setLoading(true);
@@ -1909,6 +2237,17 @@ function AchievementsPage({ athlete }) {
     if (filter === 'locked') return !unlocked[a.id];
     return true;
   });
+
+  // ADMIN — nema svojih dostignuća, pokazi info
+  if (!athlete) return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🏆 Dostignuća</h1>
+        <p className="text-sm text-white/60">Admin — koristi <a href="#/admin" className="text-brand underline">Admin → Dostignuća</a> da editujes badge-ove.</p>
+      </div>
+      <div className="glass rounded-2xl p-8 text-center text-white/60">Admin nema svoja dostignuća. 👑</div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -2729,7 +3068,10 @@ function NotificationsPage({ athlete }) {
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{ if (athlete?.id) load(); }, [athlete?.id]);
+  useEffect(()=>{
+    if (athlete?.id) load();
+    else setLoading(false); // admin nema athlete row — skidamo loading
+  }, [athlete?.id]);
 
   async function load() {
     setLoading(true);
@@ -2737,6 +3079,17 @@ function NotificationsPage({ athlete }) {
     setList(data||[]);
     setLoading(false);
   }
+
+  // Admin nema notifikacije
+  if (!athlete?.id) return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🔔 Notifikacije</h1>
+        <p className="text-sm text-white/60">Admin nalog — koristi <a href="#/admin" className="text-brand underline">Admin panel</a> za slanje broadcast notifikacija i edit template-a.</p>
+      </div>
+      <div className="glass rounded-2xl p-8 text-center text-white/60">Admin nema lične notifikacije. 👑</div>
+    </div>
+  );
   async function markAllRead() {
     await supa.from('notifications').update({ read_at: new Date().toISOString() }).eq('athlete_id', athlete.id).is('read_at', null);
     load();
@@ -3143,7 +3496,7 @@ function App() {
   // Authenticated pages
   const renderPage = () => {
     if (route === '/dashboard' || route === '/') return <Dashboard athlete={athlete} profile={profile}/>;
-    if (route === '/reels') return <ReelsPage athlete={athlete}/>;
+    if (route === '/reels') return <ReelsPage athlete={athlete} profile={profile}/>;
     if (route === '/kurs') return <KursPage athlete={athlete}/>;
     if (route === '/dostignuca') return <AchievementsPage athlete={athlete}/>;
     if (route === '/rang') return <LeaderboardPage athlete={athlete}/>;
