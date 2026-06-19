@@ -1734,6 +1734,7 @@ function AdminPage() {
           {k:'athletes',      label:'👥 Atlete'},
           {k:'notifications', label:'🔔 Broadcast'},
           {k:'templates',     label:'📨 Notif. Templates'},
+          {k:'landing',       label:'📝 Landing CMS'},
           {k:'links',         label:'🔗 Linkovi'},
           {k:'settings',      label:'⚙️ Podešavanja'},
           {k:'levels',        label:'🎖️ Nivoi'},
@@ -1752,6 +1753,7 @@ function AdminPage() {
       {tab==='athletes' && <AdminAthletes/>}
       {tab==='notifications' && <AdminNotifications/>}
       {tab==='templates' && <AdminNotifTemplates/>}
+      {tab==='landing' && <AdminLanding/>}
       {tab==='links' && <AdminLinks/>}
       {tab==='settings' && <AdminSettings/>}
       {tab==='levels' && <AdminLevels/>}
@@ -2520,21 +2522,26 @@ function AdminLinks() {
   );
 }
 
-function SettingRow({ setting, value, saved, onChange, onSave }) {
+function SettingRow({ setting, value, saved, onChange, onSave, textarea }) {
   return (
     <div className="glass rounded-2xl p-4">
-      <div className="flex items-center justify-between mb-2">
-        <div>
+      <div className="flex items-center justify-between mb-2 gap-3">
+        <div className="min-w-0">
           <div className="font-bold text-sm">{setting.label}</div>
-          <div className="text-[10px] text-white/40 font-mono">{setting.key}</div>
+          <div className="text-[10px] text-white/40 font-mono truncate">{setting.key}</div>
         </div>
         <button onClick={onSave}
           className={"shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold " + (saved ? 'bg-lime text-bg0' : 'bg-brand text-bg0')}>
           {saved ? '✓ Sačuvano' : 'Sačuvaj'}
         </button>
       </div>
-      <input value={value} onChange={e=>onChange(e.target.value)} placeholder={setting.placeholder||''}
-        className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/>
+      {textarea ? (
+        <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={setting.placeholder||''} rows={3}
+          className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm resize-none"/>
+      ) : (
+        <input value={value} onChange={e=>onChange(e.target.value)} placeholder={setting.placeholder||''}
+          className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"/>
+      )}
       {setting.help && <div className="text-[11px] text-white/50 mt-1.5">{setting.help}</div>}
     </div>
   );
@@ -3452,6 +3459,140 @@ const TEMPLATE_LABELS = {
   streak_reminder:   '🔥 Streak podsetnik',
 };
 
+// =====================================================
+// === ADMIN: LANDING CMS (Edit oficijelni sajt) ===
+// =====================================================
+const LANDING_SECTIONS = [
+  { title:'🖼️ Hero (vrh stranice)', keys: [
+    { key:'landing_logo_url', label:'Logo URL', placeholder:'https://...' },
+    { key:'landing_hero_kicker', label:'Hero kicker (mali tekst iznad naslova)' },
+    { key:'landing_hero_title', label:'Hero naslov (veliki)' },
+    { key:'landing_hero_subtitle', label:'Hero podnaslov', textarea:true },
+    { key:'landing_hero_image', label:'Hero slika URL (opciono)' },
+  ]},
+  { title:'🚀 Dugmad (2 buttona)', keys: [
+    { key:'landing_cta_primary_text', label:'Primary dugme — tekst' },
+    { key:'landing_cta_primary_url', label:'Primary dugme — link', placeholder:'https://vamit-5-2.getrewardful.com/signup' },
+    { key:'landing_cta_secondary_text', label:'Secondary dugme — tekst' },
+    { key:'landing_cta_secondary_url', label:'Secondary dugme — link', placeholder:'https://vamit-5-portal.vercel.app/#/login' },
+  ]},
+  { title:'📊 Stats (3 brojke)', keys: [
+    { key:'landing_stats_athletes', label:'Brojka 1' },
+    { key:'landing_stats_label_1', label:'Label 1' },
+    { key:'landing_stats_paid', label:'Brojka 2' },
+    { key:'landing_stats_label_2', label:'Label 2' },
+    { key:'landing_stats_reels', label:'Brojka 3' },
+    { key:'landing_stats_label_3', label:'Label 3' },
+  ]},
+  { title:'⚙️ Kako radi (3 koraka)', keys: [
+    { key:'landing_how_title', label:'Sekcija naslov' },
+    { key:'landing_how_step1_title', label:'Korak 1 — naslov' },
+    { key:'landing_how_step1_text', label:'Korak 1 — tekst', textarea:true },
+    { key:'landing_how_step2_title', label:'Korak 2 — naslov' },
+    { key:'landing_how_step2_text', label:'Korak 2 — tekst', textarea:true },
+    { key:'landing_how_step3_title', label:'Korak 3 — naslov' },
+    { key:'landing_how_step3_text', label:'Korak 3 — tekst', textarea:true },
+  ]},
+  { title:'🎖️ Nivoi (4 kartice)', keys: [
+    { key:'landing_levels_title', label:'Sekcija naslov' },
+    { key:'landing_levels_subtitle', label:'Podnaslov' },
+    { key:'landing_level_recruit_desc', label:'RECRUIT opis', textarea:true },
+    { key:'landing_level_pro_desc', label:'PRO opis', textarea:true },
+    { key:'landing_level_commando_desc', label:'COMMANDO opis', textarea:true },
+    { key:'landing_level_elite_desc', label:'ELITE opis', textarea:true },
+  ]},
+  { title:'❓ FAQ (3 pitanja)', keys: [
+    { key:'landing_faq_title', label:'FAQ naslov' },
+    { key:'landing_faq_q1', label:'Pitanje 1' },
+    { key:'landing_faq_a1', label:'Odgovor 1', textarea:true },
+    { key:'landing_faq_q2', label:'Pitanje 2' },
+    { key:'landing_faq_a2', label:'Odgovor 2', textarea:true },
+    { key:'landing_faq_q3', label:'Pitanje 3' },
+    { key:'landing_faq_a3', label:'Odgovor 3', textarea:true },
+  ]},
+  { title:'🦶 Footer + Social', keys: [
+    { key:'landing_footer_text', label:'Footer tekst' },
+    { key:'landing_contact_email', label:'Kontakt email' },
+    { key:'landing_instagram_url', label:'Instagram URL' },
+    { key:'landing_tiktok_url', label:'TikTok URL' },
+    { key:'landing_youtube_url', label:'YouTube URL' },
+    { key:'landing_main_site_url', label:'Glavni sajt URL' },
+  ]},
+  { title:'🌐 SEO Meta', keys: [
+    { key:'landing_meta_title', label:'Browser tab title' },
+    { key:'landing_meta_description', label:'Meta description', textarea:true },
+  ]},
+];
+
+function AdminLanding() {
+  const [values, setValues] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savedKey, setSavedKey] = useState(null);
+  const [openSec, setOpenSec] = useState({ 0:true });
+
+  useEffect(()=>{ load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    const allKeys = LANDING_SECTIONS.flatMap(s => s.keys.map(k => k.key));
+    const { data } = await supa.from('settings').select('key, value').in('key', allKeys);
+    const map = {};
+    (data||[]).forEach(r => { map[r.key] = typeof r.value === 'string' ? r.value : (r.value?.v ?? JSON.stringify(r.value)); });
+    setValues(map);
+    setLoading(false);
+  }
+
+  async function saveSetting(key, value) {
+    const { error } = await supa.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (!error) { setSavedKey(key); setTimeout(()=>setSavedKey(null), 1500); }
+    else alert('Greška: ' + error.message);
+  }
+
+  if (loading) return <div className="text-center py-10 text-white/50">Učitavam...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
+        📝 Ovde edituješ <b>vamit5-affiliate.vercel.app</b> (oficijelni landing sajt). Promene su <b>odmah aktivne</b> — refresh sajta i vidiš novo. Svaka kartica = jedna sekcija sajta.
+      </div>
+
+      <div className="glass rounded-2xl p-4 border border-gold/20">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-bold">🔗 Pregled sajta uživo</div>
+            <div className="text-[11px] text-white/60">Otvori da vidiš trenutno stanje</div>
+          </div>
+          <a href="https://vamit5-affiliate.vercel.app/" target="_blank" rel="noopener" className="px-4 py-2 rounded-xl bg-gold/15 border border-gold/40 text-gold text-xs font-bold">Otvori sajt ↗</a>
+        </div>
+      </div>
+
+      {LANDING_SECTIONS.map((sec, i) => (
+        <div key={i} className="glass-strong rounded-2xl overflow-hidden">
+          <button onClick={()=>setOpenSec({...openSec, [i]: !openSec[i]})}
+            className="w-full p-4 flex items-center justify-between hover:bg-white/5">
+            <div className="font-display font-bold text-base text-left">{sec.title}</div>
+            <div className="text-2xl text-white/40">{openSec[i] ? '▼' : '▶'}</div>
+          </button>
+          {openSec[i] && (
+            <div className="border-t border-white/5 p-4 space-y-3">
+              {sec.keys.map(field => (
+                <SettingRow key={field.key}
+                  setting={{ key:field.key, label:field.label, placeholder:field.placeholder }}
+                  value={values[field.key]||''}
+                  saved={savedKey===field.key}
+                  textarea={field.textarea}
+                  onChange={v=>setValues({...values, [field.key]:v})}
+                  onSave={()=>saveSetting(field.key, values[field.key]||'')}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // === APP ROOT ===
 function App() {
   const hash = useHash();
@@ -3483,12 +3624,18 @@ function App() {
 
   if (loading) return null;
 
-  // Public pages
+  // Public pages — uvek LoginPage, NEMA landing (landing je na vamit5-affiliate.vercel.app)
+  useEffect(() => {
+    if (!loading && !user && route !== '/login') {
+      window.location.hash = '#/login';
+    }
+  }, [user, loading, route]);
+
   if (!user) {
     return (
       <div>
         <PublicNav user={null}/>
-        {route === '/login' ? <LoginPage/> : <LandingPage/>}
+        <LoginPage/>
       </div>
     );
   }
