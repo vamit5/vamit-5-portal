@@ -98,6 +98,22 @@ const LEVEL_THEME = {
   elite:    { color:'#ffc24b', name:'ELITE',   emoji:'👑', glow:'glow-elite' }
 };
 
+// Level zahtevi za reels u periodu
+const LEVEL_TARGETS = {
+  recruit:  { reels: 60,  days: 60, per_day: 1, next: 'pro',      label: 'REGRUT' },
+  pro:      { reels: 60,  days: 30, per_day: 2, next: 'commando', label: 'PRO' },
+  commando: { reels: 90,  days: 30, per_day: 3, next: 'elite',    label: 'COMMANDO' },
+  elite:    { reels: 120, days: 30, per_day: 4, next: null,       label: 'ELITE' }
+};
+
+// Min payout u centima — REGRUT moze bilo koliko, ostali min €10
+const MIN_PAYOUT_CENTS = {
+  recruit: 1,    // bilo koja suma
+  pro:      1000, // €10
+  commando: 1000,
+  elite:    1000
+};
+
 // === ROUTING ===
 function useHash() {
   const [hash, setHash] = useState(window.location.hash || '#/');
@@ -443,7 +459,14 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
   const theme = LEVEL_THEME[athlete?.level || 'recruit'];
   const isSuper = profile?.role === 'super_admin';
 
-  const links = [
+  // Admin i atleta imaju različit meni
+  const links = isSuper ? [
+    { hash:'#/dashboard',  label:'Overview',          emoji:'🏠' },
+    { hash:'#/reels',      label:'Reels Queue',       emoji:'🎬' },
+    { hash:'#/isplate',    label:'Isplate Queue',     emoji:'💸' },
+    { hash:'#/atlete',     label:'Atlete',            emoji:'👥' },
+    { hash:'#/admin',      label:'CMS & Settings',    emoji:'⚙️', special:true },
+  ] : [
     { hash:'#/dashboard',  label:'Dashboard',  emoji:'🏠' },
     { hash:'#/reels',      label:'Reels',      emoji:'🎬' },
     { hash:'#/kurs',       label:'Kurs',       emoji:'📚' },
@@ -453,7 +476,6 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
     { hash:'#/notifikacije', label:'Notifikacije', emoji:'🔔' },
     { hash:'#/profil',     label:'Profil',     emoji:'👤' },
   ];
-  if (isSuper) links.push({ hash:'#/admin', label:'Admin', emoji:'⚙️', special:true });
 
   return (
     <div className="relative z-10 min-h-screen">
@@ -595,6 +617,20 @@ function Dashboard({ athlete, profile }) {
   const monthlyReq = levelCfg?.monthly_threshold_json || {};
   const introActive = athlete.recruit_intro_period_until && new Date(athlete.recruit_intro_period_until) > new Date();
 
+  // === LEVEL PROGRESS — koliko dana u ovom nivou + koliko reels-ova ===
+  const levelStartedAt = athlete.level_started_at || athlete.joined_at;
+  const target = LEVEL_TARGETS[athlete.level] || LEVEL_TARGETS.recruit;
+  const daysSinceLevelStart = levelStartedAt
+    ? Math.floor((Date.now() - new Date(levelStartedAt).getTime()) / 86400000)
+    : 0;
+  const daysRemaining = Math.max(0, target.days - daysSinceLevelStart);
+  // Broj odobrenih reels-ova OD KAD je atleta na trenutnom nivou
+  const reelsInPeriod = stats.reels_total; // priblizno; pravo bi bilo posebno query
+  const reelsTarget = target.reels;
+  const reelsRemaining = Math.max(0, reelsTarget - reelsInPeriod);
+  const reelsPct = Math.min(100, Math.round((reelsInPeriod / reelsTarget) * 100));
+  const daysPct = Math.min(100, Math.round((daysSinceLevelStart / target.days) * 100));
+
   return (
     <div className="space-y-6">
       {/* GREETING */}
@@ -621,27 +657,61 @@ function Dashboard({ athlete, profile }) {
           </div>
         </div>
 
-        {introActive && (
-          <div className="mb-4 p-3 rounded-xl bg-gold/10 border border-gold/30 text-xs sm:text-sm">
-            🎁 <b className="text-gold">Recruit intro period aktivan</b> — reel earnings ti idu instant (bez sales requirement) još {Math.ceil((new Date(athlete.recruit_intro_period_until) - new Date())/86400000)} dana.
+        {/* === LEVEL PROGRESS CARD (jasan, glavni) === */}
+        <div className="space-y-4 mt-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-xs uppercase tracking-wider text-white/60 font-bold">
+              {target.next ? `Tvoj cilj — napreduj na ${LEVEL_THEME[target.next].name}` : 'Top tier — održavaj ritam'}
+            </div>
+            <div className="text-[10px] text-white/40">
+              Pravilo: <b style={{color:theme.color}}>{target.reels} reels-ova za {target.days} dana</b> ({target.per_day}/dan)
+            </div>
           </div>
-        )}
 
-        {/* PROGRESS TO NEXT LEVEL */}
-        {athlete.level !== 'elite' && reqs.sales_total && (
-          <div className="space-y-3">
-            <div className="text-xs uppercase tracking-wider text-white/50">Napredak ka sledećem nivou</div>
-            {reqs.sales_total && (
-              <ProgressRow label="Prodaje" current={stats.sales_total} target={reqs.sales_total} color={theme.color}/>
-            )}
-            {reqs.reels_total && (
-              <ProgressRow label="Reelovi (total)" current={stats.reels_total} target={reqs.reels_total} color={theme.color}/>
-            )}
-            {reqs.reels_qualifying_month && (
-              <ProgressRow label="Reelovi (ovaj mesec)" current={stats.reels_month} target={reqs.reels_qualifying_month} color={theme.color}/>
-            )}
+          <div className="grid sm:grid-cols-2 gap-3">
+            {/* Reels progress */}
+            <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
+              <div className="flex items-baseline justify-between mb-2">
+                <div className="font-display font-black text-2xl">
+                  <span style={{color:theme.color}}>{reelsInPeriod}</span>
+                  <span className="text-white/30 text-base"> / {reelsTarget}</span>
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">🎬 Reels</div>
+              </div>
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: reelsPct+'%', background: theme.color }}/>
+              </div>
+              <div className="text-[11px] text-white/50 mt-1.5">
+                {reelsRemaining > 0
+                  ? `Ostalo još ${reelsRemaining} reels-ova`
+                  : '✓ Ispunio cilj!'}
+              </div>
+            </div>
+
+            {/* Days progress */}
+            <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
+              <div className="flex items-baseline justify-between mb-2">
+                <div className="font-display font-black text-2xl">
+                  <span className="text-gold">{daysRemaining}</span>
+                  <span className="text-white/30 text-base"> dana</span>
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">⏱️ Vreme</div>
+              </div>
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-full rounded-full bg-gold transition-all" style={{ width: daysPct+'%' }}/>
+              </div>
+              <div className="text-[11px] text-white/50 mt-1.5">
+                Prošlo {daysSinceLevelStart} od {target.days} dana
+              </div>
+            </div>
           </div>
-        )}
+
+          {introActive && (
+            <div className="p-3 rounded-xl bg-lime/10 border border-lime/30 text-xs sm:text-sm">
+              ✅ <b className="text-lime">Bonus za RECRUIT atlete:</b> zaradu za reels-ove dobijaš ODMAH na račun, bez čekanja prodaja. Bonus traje još {Math.ceil((new Date(athlete.recruit_intro_period_until) - new Date())/86400000)} dana.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* EARNINGS */}
@@ -1153,13 +1223,17 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
     setPending(pp);
   }
 
+  const minPayoutCents = MIN_PAYOUT_CENTS[athlete?.level] || 1000;
+  const isRecruit = athlete?.level === 'recruit';
+
   async function requestPayout() {
     if (!athlete.bank_full_name || !athlete.bank_iban) {
       setMsg({type:'err', text:'Prvo unesi bank info u Profilu.'});
       return;
     }
-    if (available < 1000) {
-      setMsg({type:'err', text:'Minimum za isplatu je €10.'});
+    if (available < minPayoutCents) {
+      const minLabel = isRecruit ? 'bilo koji iznos' : '€'+(minPayoutCents/100).toFixed(2);
+      setMsg({type:'err', text:'Minimum za isplatu je ' + minLabel + '.'});
       return;
     }
     if (pending) {
@@ -1192,9 +1266,9 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
         {pending ? (
           <div className="text-sm text-gold">⏳ Već imaš pending zahtev za {formatEUR(pending.amount_cents)}. Admin obrađuje.</div>
         ) : (
-          <button onClick={requestPayout} disabled={available<1000}
+          <button onClick={requestPayout} disabled={available<minPayoutCents}
             className="px-8 py-3.5 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50">
-            📤 Zatraži isplatu
+            {isRecruit ? '📤 Zatraži isplatu sada (bilo koji iznos)' : `📤 Zatraži isplatu (min €${(minPayoutCents/100).toFixed(0)})`}
           </button>
         )}
         {msg && (
@@ -1295,17 +1369,18 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
           <div className="text-xs text-white/60 mt-1">Link koji deliš sa pratiocima — kad neko kupi preko njega, ti zaradiš.</div>
         </div>
         {hasLink ? (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
-            <code className="text-xs sm:text-sm text-brand flex-1 break-all">{currentLink}</code>
-            <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
-              {copied ? '✓ Kopirano' : '📋 Kopiraj'}
-            </button>
-          </div>
+          <>
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
+              <code className="text-xs sm:text-sm text-brand flex-1 break-all">{currentLink}</code>
+              <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
+                {copied ? '✓ Kopirano' : '📋 Kopiraj'}
+              </button>
+            </div>
+            <div className="text-[11px] text-lime mt-2">✓ Link je automatski sinhronizovan sa Rewardful nalogom.</div>
+          </>
         ) : (
           <div className="p-4 rounded-xl bg-gold/10 border border-gold/30 text-sm">
-            ℹ️ Registruj se na{' '}
-            <a href="https://vamit-5-2.getrewardful.com/" target="_blank" rel="noopener" className="text-brand underline">vamit-5-2.getrewardful.com</a>
-            {' '}i nalepi svoj link u polje ispod.
+            ⏳ Link se sinhronizuje sa Rewardfulom. Osveži stranicu za 30 sekundi.
           </div>
         )}
       </div>
@@ -1316,13 +1391,6 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
           <Field label="Email"><input value={profile?.email||''} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
           <Field label="Tvoj nivo"><input value={LEVEL_THEME[athlete?.level||'recruit'].name} disabled className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 text-sm opacity-60"/></Field>
           <Field label="Puno ime"><input value={form.full_name} onChange={e=>setForm({...form, full_name:e.target.value})} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
-          <Field label="Rewardful Link (automatski povezan)">
-            <input value={form.rewardful_token} disabled
-              className="w-full px-4 py-3 rounded-xl bg-bg1/50 border border-white/5 outline-none text-sm font-mono opacity-70"/>
-            <div className="text-[11px] text-white/50 mt-1.5">
-              ✓ Link je automatski povezan kad si se registrovao na Rewardfulu. Vidi i kopiraj ga u kartici iznad.
-            </div>
-          </Field>
         </div>
 
         <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4">
@@ -2344,40 +2412,40 @@ function LeaderboardPage({ athlete }) {
   async function load() {
     setLoading(true);
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-    let result = [];
+
+    // PRVO uzmemo SVE aktivne atlete (sa 0 ili više stats)
+    const { data: allAthletes } = await supa.from('athletes')
+      .select('id, level, profiles!athletes_id_fkey(full_name, email)')
+      .eq('status','active').limit(200);
+
+    // SAD uzmemo stats za izabranu metriku
+    const map = {};
     if (metric === 'reels') {
       let q = supa.from('reels').select('athlete_id').eq('status','approved');
       if (period === 'month') q = q.gte('submitted_at', monthStart.toISOString());
       const { data } = await q;
-      const map = {};
       (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+1; });
-      result = Object.entries(map).map(([id, val]) => ({ id, val }));
     } else if (metric === 'sales') {
       let q = supa.from('sales').select('athlete_id').eq('status','confirmed');
       if (period === 'month') q = q.gte('created_at', monthStart.toISOString());
       const { data } = await q;
-      const map = {};
       (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+1; });
-      result = Object.entries(map).map(([id, val]) => ({ id, val }));
     } else {
-      // XP
       let q = supa.from('xp_ledger').select('athlete_id, amount');
       if (period === 'month') q = q.gte('created_at', monthStart.toISOString());
       const { data } = await q;
-      const map = {};
       (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+(r.amount||0); });
-      result = Object.entries(map).map(([id, val]) => ({ id, val }));
     }
+
+    // Spoji SVE atlete sa stats (i one sa 0)
+    let result = (allAthletes||[]).map(a => ({
+      id: a.id,
+      val: map[a.id] || 0,
+      athlete: a
+    }));
     result.sort((a,b) => b.val - a.val);
     result = result.slice(0, 50);
 
-    if (result.length) {
-      const ids = result.map(r => r.id);
-      const { data: profiles } = await supa.from('athletes').select('id, level, profiles!athletes_id_fkey(full_name, email)').in('id', ids);
-      const pmap = {};
-      (profiles||[]).forEach(p => { pmap[p.id] = p; });
-      result = result.map(r => ({ ...r, athlete: pmap[r.id] }));
-    }
     setRows(result);
     setLoading(false);
   }
@@ -3593,6 +3661,125 @@ function AdminLanding() {
   );
 }
 
+// =====================================================
+// === ADMIN FULL PAGE WRAPPERS ===
+// =====================================================
+function AdminReelsQueueFullPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🎬 Reels Queue</h1>
+        <p className="text-sm text-white/60">Odobravaj ili odbijaj atlete reels-e ovde. Velika dugmad, brzo.</p>
+      </div>
+      <AdminReelsQueueLarge/>
+    </div>
+  );
+}
+
+function AdminPayoutQueueFullPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">💸 Isplate Queue</h1>
+        <p className="text-sm text-white/60">Atletini zahtevi za isplatu. Klikni "Isplaceno" kad pošalješ transfer.</p>
+      </div>
+      <AdminPayoutQueue/>
+    </div>
+  );
+}
+
+function AdminAthletesFullPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">👥 Atlete</h1>
+        <p className="text-sm text-white/60">Pun pregled svih atleta. Klikni "Detalji" za pojedinačan profil.</p>
+      </div>
+      <AdminAthletes/>
+    </div>
+  );
+}
+
+// === Velika verzija Reels Queue — brzo odobravanje ===
+function AdminReelsQueueLarge() {
+  const [reels, setReels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    load();
+    const ch = supa.channel('reels_queue')
+      .on('postgres_changes', { event:'*', schema:'public', table:'reels' }, load)
+      .subscribe();
+    return () => { try { ch.unsubscribe(); } catch(e){} };
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supa.from('reels').select('*, profiles!reels_athlete_id_fkey(email, full_name), athletes!reels_athlete_id_fkey(level)')
+      .eq('status','pending').order('submitted_at', { ascending: true }).limit(100);
+    setReels(data || []);
+    setLoading(false);
+  }
+
+  async function decide(id, status, reason=null) {
+    const reel = reels.find(r => r.id === id);
+    await supa.from('reels').update({ status, reviewed_at: new Date().toISOString(), reject_reason: reason }).eq('id', id);
+    if (status === 'approved' && reel) {
+      const lvl = reel.athletes?.level || 'recruit';
+      const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', lvl).maybeSingle();
+      const reward = cfg?.reel_reward_cents || 30;
+      await supa.from('earnings_ledger').insert({
+        athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
+        ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
+      });
+      await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
+    } else if (status === 'rejected' && reel) {
+      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+    }
+    load();
+  }
+
+  if (loading) return <div className="text-center py-12 text-white/50">Učitavam...</div>;
+  if (reels.length === 0) return <div className="glass rounded-2xl p-12 text-center text-white/60 text-lg">✓ Nema reels-ova za review. 👌</div>;
+
+  return (
+    <div className="space-y-3">
+      {reels.map(r => {
+        const lvl = r.athletes?.level || 'recruit';
+        const theme = LEVEL_THEME[lvl];
+        return (
+          <div key={r.id} className="glass-strong rounded-2xl p-5 border" style={{borderColor: theme.color+'20'}}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="text-3xl shrink-0">{theme.emoji}</div>
+                <div className="min-w-0">
+                  <div className="font-bold text-base truncate">{r.profiles?.full_name || r.profiles?.email}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold" style={{color: theme.color}}>{theme.name}</span>
+                    <span className="text-[11px] text-white/40">· {fromNow(r.submitted_at)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <a href={r.url} target="_blank" rel="noopener" className="block px-4 py-3 rounded-xl bg-bg0 border border-brand/20 hover:border-brand/60 text-sm text-brand break-all mb-3 transition">
+              🔗 {r.url}
+            </a>
+            {r.caption && <div className="text-xs text-white/60 mb-3 italic">"{r.caption}"</div>}
+            <div className="flex gap-3">
+              <button onClick={()=>decide(r.id, 'approved')} className="flex-1 py-4 rounded-xl bg-lime/20 border-2 border-lime/50 text-lime font-black text-base hover:bg-lime/30 transition">
+                ✓ ODOBRI
+              </button>
+              <button onClick={()=>{ const reason = prompt('Razlog odbijanja:'); if (reason) decide(r.id, 'rejected', reason); }}
+                className="flex-1 py-4 rounded-xl bg-danger/20 border-2 border-danger/50 text-danger font-black text-base hover:bg-danger/30 transition">
+                ✗ ODBIJ
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // === APP ROOT ===
 function App() {
   const hash = useHash();
@@ -3643,15 +3830,21 @@ function App() {
 
   // Authenticated pages
   const renderPage = () => {
-    if (route === '/dashboard' || route === '/') return <Dashboard athlete={athlete} profile={profile}/>;
-    if (route === '/reels') return <ReelsPage athlete={athlete} profile={profile}/>;
+    const isSuper = profile?.role === 'super_admin';
+
+    if (route === '/dashboard' || route === '/') {
+      return isSuper ? <AdminOverview profile={profile}/> : <Dashboard athlete={athlete} profile={profile}/>;
+    }
+    if (route === '/reels') return isSuper ? <AdminReelsQueueFullPage/> : <ReelsPage athlete={athlete} profile={profile}/>;
+    if (route === '/isplate') return isSuper ? <AdminPayoutQueueFullPage/> : <IsplatePage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
+    if (route === '/atlete' && isSuper) return <AdminAthletesFullPage/>;
+    if (route === '/admin' && isSuper) return <AdminPage/>;
+
     if (route === '/kurs') return <KursPage athlete={athlete}/>;
     if (route === '/dostignuca') return <AchievementsPage athlete={athlete}/>;
     if (route === '/rang') return <LeaderboardPage athlete={athlete}/>;
-    if (route === '/isplate') return <IsplatePage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
     if (route === '/notifikacije') return <NotificationsPage athlete={athlete}/>;
     if (route === '/profil') return <ProfilPage athlete={athlete} profile={profile} refreshProfile={refreshProfile}/>;
-    if (route === '/admin' && profile?.role === 'super_admin') return <AdminPage/>;
     return <Dashboard athlete={athlete} profile={profile}/>;
   };
 
