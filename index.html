@@ -3622,14 +3622,15 @@ function App() {
     window.location.hash = '#/';
   }
 
-  if (loading) return null;
-
-  // Public pages — uvek LoginPage, NEMA landing (landing je na vamit5-affiliate.vercel.app)
+  // Redirect: nelogovan user uvek ide na /login (NEMA landinga u portalu)
   useEffect(() => {
-    if (!loading && !user && route !== '/login') {
-      window.location.hash = '#/login';
+    if (!loading && !user) {
+      const r = (route || '').replace(/^\//,'');
+      if (r !== 'login') window.location.hash = '#/login';
     }
   }, [user, loading, route]);
+
+  if (loading) return null;
 
   if (!user) {
     return (
