@@ -10,8 +10,8 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="application-name" content="VAMIT-5 Portal" />
 <title>VAMIT-5 Athlete Portal</title>
-<link rel="icon" type="image/png" href="https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png" />
-<link rel="apple-touch-icon" href="https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png" />
+<link rel="icon" type="image/jpeg" href="https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg" />
+<link rel="apple-touch-icon" sizes="180x180" href="https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_180,h_180,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -116,10 +116,19 @@ const EARNINGS_STATUS_SR = {
 
 // Min payout u centima — REGRUT moze bilo koliko, ostali min €10
 const MIN_PAYOUT_CENTS = {
-  recruit: 1,    // bilo koja suma
-  pro:      1000, // €10
+  recruit: 1,
+  pro:      1000,
   commando: 1000,
   elite:    1000
+};
+
+// Reels payout unlock uslov: PRO+ ne moze odmah da povuce reels zaradu
+// dok ne ispuni X prodaja + Y reels-ova u 30 dana
+const REELS_UNLOCK = {
+  recruit:  null, // bez uslova — moze odmah
+  pro:      { sales: 3,  reels: 60 },
+  commando: { sales: 5,  reels: 90 },
+  elite:    { sales: 10, reels: 120 }
 };
 
 // === ROUTING ===
@@ -548,7 +557,7 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
 
 // === DASHBOARD ===
 function Dashboard({ athlete, profile }) {
-  const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0 });
+  const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0, bodovi:0 });
   const [activity, setActivity] = useState([]);
   const [levelCfg, setLevelCfg] = useState(null);
   const [newAchievement, setNewAchievement] = useState(null);
@@ -574,17 +583,18 @@ function Dashboard({ athlete, profile }) {
 
   async function loadAll() {
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-    const [r1, r2, r3, sa, sm, ep, ea, el, lc, reelsDates] = await Promise.all([
+    const [r1, r2, r3, sa, sm, ep, wallet, el, lc, reelsDates, bod] = await Promise.all([
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthStart.toISOString()),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed').gte('created_at', monthStart.toISOString()),
       supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','pending'),
-      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','available').is('payout_request_id', null),
+      supa.from('athlete_wallet').select('*').eq('athlete_id', athlete.id).maybeSingle(),
       supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).in('status', ['available','paid','pending']),
       supa.from('level_configs').select('*').eq('level_key', athlete.level).maybeSingle(),
-      supa.from('reels').select('submitted_at').eq('athlete_id', athlete.id).eq('status','approved').order('submitted_at',{ascending:false}).limit(120)
+      supa.from('reels').select('submitted_at').eq('athlete_id', athlete.id).eq('status','approved').order('submitted_at',{ascending:false}).limit(120),
+      supa.from('athlete_bodovi').select('total_bodovi').eq('athlete_id', athlete.id).maybeSingle()
     ]);
 
     // === STREAK CALC ===
@@ -608,9 +618,10 @@ function Dashboard({ athlete, profile }) {
       sales_total: salesTotal,
       sales_month: sm.count||0,
       earnings_pending: (ep.data||[]).reduce((s,x)=>s+x.amount_cents,0),
-      earnings_available: (ea.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      earnings_available: wallet?.balance_available || 0,
       earnings_lifetime: (el.data||[]).reduce((s,x)=>s+x.amount_cents,0),
-      streak
+      streak,
+      bodovi: bod?.total_bodovi || 0
     });
     setLevelCfg(lc.data);
 
@@ -765,7 +776,7 @@ function Dashboard({ athlete, profile }) {
 
       {/* OVERVIEW STATS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MiniStat label="BODOVI" value={athlete?.current_xp || 0} sub="ukupno" />
+        <MiniStat label="BODOVI" value={stats.bodovi} sub="ukupno" />
         <MiniStat label="Reels (ukupno)" value={stats.reels_total} sub={stats.reels_pending + ' na čekanju'} />
         <MiniStat label="Reels (mesec)" value={stats.reels_month} sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)} />
         <MiniStat label="Prodaje (ukupno)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
@@ -1267,28 +1278,37 @@ function KursPage({ athlete }) {
 
 // === ISPLATE ===
 function IsplatePage({ athlete, profile, refreshProfile }) {
-  const [available, setAvailable] = useState(0);
+  const [wallet, setWallet] = useState({ reels_balance: 0, sales_balance: 0 });
   const [history, setHistory] = useState([]);
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
-  const [customAmount, setCustomAmount] = useState(''); // user-entered EUR
+  const [reelsAmt, setReelsAmt] = useState('');
+  const [salesAmt, setSalesAmt] = useState('');
+  const [period30, setPeriod30] = useState({ sales: 0, reels: 0 });
 
   useEffect(()=>{ if (athlete) load(); }, [athlete?.id]);
   async function load() {
-    const [{ data: ea }, { data: pr }, { data: pp }] = await Promise.all([
-      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','available').is('payout_request_id', null),
+    const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
+    const [w, pr, pp, sc, rc] = await Promise.all([
+      supa.from('athlete_wallet_split').select('*').eq('athlete_id', athlete.id).maybeSingle(),
       supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).order('requested_at',{ascending:false}).limit(20),
-      supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).eq('status','pending').maybeSingle()
+      supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).eq('status','pending').maybeSingle(),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed').gte('created_at', monthAgo.toISOString()),
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthAgo.toISOString())
     ]);
-    setAvailable((ea||[]).reduce((s,x)=>s+x.amount_cents,0));
-    setHistory(pr||[]);
-    setPending(pp);
+    setWallet(w.data || { reels_balance: 0, sales_balance: 0 });
+    setHistory(pr.data || []);
+    setPending(pp.data);
+    setPeriod30({ sales: sc.count || 0, reels: rc.count || 0 });
   }
 
-  const minPayoutCents = MIN_PAYOUT_CENTS[athlete?.level] || 1000;
-  const isRecruit = athlete?.level === 'recruit';
+  const lvl = athlete?.level || 'recruit';
+  const isRecruit = lvl === 'recruit';
+  const minPayoutCents = MIN_PAYOUT_CENTS[lvl] || 1000;
+  const unlockReq = REELS_UNLOCK[lvl];
+  const reelsUnlocked = !unlockReq || (period30.sales >= unlockReq.sales && period30.reels >= unlockReq.reels);
 
-  async function requestPayout() {
+  async function requestPayout(source) {
     if (!athlete.bank_full_name || !athlete.bank_iban) {
       setMsg({type:'err', text:'Prvo unesi bank info u Profilu.'});
       return;
@@ -1297,25 +1317,38 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
       setMsg({type:'err', text:'Već imaš zahtev koji čeka obradu.'});
       return;
     }
-    // Iznos: ako je user uneo custom, koristi to; inače cela suma
-    const reqEur = parseFloat((customAmount||'').replace(',','.'));
-    const reqCents = (customAmount && !isNaN(reqEur) && reqEur > 0) ? Math.round(reqEur * 100) : available;
+    if (source === 'reels' && !reelsUnlocked) {
+      setMsg({type:'err', text:`Reels isplata zaključana. Treba ti: ${unlockReq.sales} prodaja + ${unlockReq.reels} reels-ova u 30 dana. Trenutno: ${period30.sales}/${unlockReq.sales} i ${period30.reels}/${unlockReq.reels}.`});
+      return;
+    }
+
+    const amtStr = source === 'reels' ? reelsAmt : salesAmt;
+    const balance = source === 'reels' ? wallet.reels_balance : wallet.sales_balance;
+    const reqEur = parseFloat((amtStr||'').replace(',','.'));
+    const reqCents = (amtStr && !isNaN(reqEur) && reqEur > 0) ? Math.round(reqEur * 100) : balance;
+
     if (reqCents <= 0) { setMsg({type:'err', text:'Unesi pozitivan iznos.'}); return; }
-    if (reqCents > available) { setMsg({type:'err', text:'Iznos veći od dostupnog: '+formatEUR(available)}); return; }
+    if (reqCents > balance) { setMsg({type:'err', text:'Iznos veći od dostupnog u '+(source==='reels'?'Reels':'Prodaja')+': '+formatEUR(balance)}); return; }
     if (reqCents < minPayoutCents) {
       const minLabel = isRecruit ? 'bilo koji iznos' : '€'+(minPayoutCents/100).toFixed(2);
       setMsg({type:'err', text:'Minimum za isplatu je ' + minLabel + '.'});
       return;
     }
     const { error } = await supa.from('payout_requests').insert({
-      athlete_id: athlete.id, amount_cents: reqCents,
+      athlete_id: athlete.id,
+      amount_cents: reqCents,
+      payout_source: source,
       bank_info_snapshot: {
         full_name: athlete.bank_full_name, iban: athlete.bank_iban,
         bank: athlete.bank_name, phone: athlete.bank_phone
       }
     });
     if (error) setMsg({type:'err', text: error.message});
-    else { setMsg({type:'ok', text:'Zahtev poslat! Admin obraduje uskoro.'}); setCustomAmount(''); load(); }
+    else {
+      setMsg({type:'ok', text:'Zahtev za '+formatEUR(reqCents)+' poslat! Admin obrađuje.'});
+      if (source==='reels') setReelsAmt(''); else setSalesAmt('');
+      load();
+    }
   }
 
   const sColor = { pending:'#ffc24b', approved:'#3b82f6', paid:'#a6ff3b', rejected:'#ff4d5e' };
@@ -1327,37 +1360,87 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
         <p className="text-sm text-white/60">Pregled, zahtevi i istorija.</p>
       </div>
 
-      <div className="glass-strong rounded-3xl p-6 sm:p-8 text-center" style={{boxShadow:'0 30px 60px -20px rgba(166,255,59,0.3)'}}>
-        <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-2 font-bold">Dostupno za isplatu</div>
-        <div className="font-display text-5xl sm:text-6xl font-black text-lime mb-4">{formatEUR(available)}</div>
-        {pending ? (
-          <div className="text-sm text-gold">⏳ Imaš zahtev koji čeka obradu za {formatEUR(pending.amount_cents)}. Admin obrađuje.</div>
+      {pending && (
+        <div className="glass rounded-2xl p-4 border border-gold/30 text-sm text-gold">
+          ⏳ Imaš zahtev za isplatu od {formatEUR(pending.amount_cents)} ({pending.payout_source==='reels'?'Reels':pending.payout_source==='sales'?'Prodaje':'Mešano'}). Admin obrađuje.
+        </div>
+      )}
+
+      {/* === REELS BUCKET === */}
+      <div className="glass-strong rounded-3xl p-5 sm:p-6 border" style={{borderColor: reelsUnlocked ? 'rgba(166,255,59,0.3)' : 'rgba(255,194,75,0.3)'}}>
+        <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1">🎬 Reels zarada</div>
+            <div className="font-display text-3xl sm:text-4xl font-black" style={{color: reelsUnlocked ? '#a6ff3b' : '#ffc24b'}}>
+              {formatEUR(wallet.reels_balance)}
+            </div>
+          </div>
+          {!reelsUnlocked && (
+            <div className="px-3 py-1.5 rounded-lg bg-gold/15 border border-gold/40 text-[10px] font-black text-gold uppercase tracking-wider">🔒 Zaključano</div>
+          )}
+        </div>
+
+        {reelsUnlocked ? (
+          !pending && (
+            <div className="space-y-2 mt-3">
+              <div className="flex items-center gap-2">
+                <input type="text" inputMode="decimal" value={reelsAmt} onChange={e=>setReelsAmt(e.target.value)}
+                  placeholder={`Iznos € (max ${(wallet.reels_balance/100).toFixed(2)})`}
+                  className="flex-1 px-4 py-3 rounded-xl bg-bg0 border border-white/15 focus:border-brand outline-none text-sm text-center font-bold"/>
+                <button type="button" onClick={()=>setReelsAmt((wallet.reels_balance/100).toFixed(2))}
+                  className="px-3 py-3 rounded-xl bg-white/5 text-xs text-white/70 whitespace-nowrap">Sve</button>
+              </div>
+              <button onClick={()=>requestPayout('reels')} disabled={wallet.reels_balance < minPayoutCents}
+                className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50 text-sm">
+                {reelsAmt ? `📤 Zatraži €${parseFloat(reelsAmt).toFixed(2)} (Reels)` : '📤 Zatraži ceo Reels iznos'}
+              </button>
+            </div>
+          )
         ) : (
-          <div className="max-w-md mx-auto space-y-3">
+          <div className="mt-3 p-3 rounded-xl bg-gold/5 border border-gold/30 text-xs space-y-1">
+            <div className="font-bold text-gold">Otključaj sa:</div>
+            <div className="flex items-center justify-between"><span>🎬 Reels u 30 dana</span><span className="font-bold">{period30.reels} / {unlockReq.reels}</span></div>
+            <div className="flex items-center justify-between"><span>💎 Prodaje u 30 dana</span><span className="font-bold">{period30.sales} / {unlockReq.sales}</span></div>
+            <div className="text-white/50 text-[10px] mt-1">Tvoja zarada od reels-ova čeka. Kad ispuniš uslove, otključavaš automatski.</div>
+          </div>
+        )}
+      </div>
+
+      {/* === SALES BUCKET — uvek dostupan === */}
+      <div className="glass-strong rounded-3xl p-5 sm:p-6 border border-brand/30">
+        <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1">💎 Prodaja paketa</div>
+            <div className="font-display text-3xl sm:text-4xl font-black text-brand">
+              {formatEUR(wallet.sales_balance)}
+            </div>
+          </div>
+          <div className="px-3 py-1.5 rounded-lg bg-brand/15 border border-brand/40 text-[10px] font-black text-brand uppercase tracking-wider">✓ Uvek dostupno</div>
+        </div>
+
+        {!pending && (
+          <div className="space-y-2 mt-3">
             <div className="flex items-center gap-2">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={customAmount}
-                onChange={e=>setCustomAmount(e.target.value)}
-                placeholder={`Iznos u € (max ${(available/100).toFixed(2)})`}
-                className="flex-1 px-4 py-3 rounded-xl bg-bg0 border border-white/15 focus:border-brand outline-none text-sm text-center font-bold"
-              />
-              <button type="button" onClick={()=>setCustomAmount((available/100).toFixed(2))}
+              <input type="text" inputMode="decimal" value={salesAmt} onChange={e=>setSalesAmt(e.target.value)}
+                placeholder={`Iznos € (max ${(wallet.sales_balance/100).toFixed(2)})`}
+                className="flex-1 px-4 py-3 rounded-xl bg-bg0 border border-white/15 focus:border-brand outline-none text-sm text-center font-bold"/>
+              <button type="button" onClick={()=>setSalesAmt((wallet.sales_balance/100).toFixed(2))}
                 className="px-3 py-3 rounded-xl bg-white/5 text-xs text-white/70 whitespace-nowrap">Sve</button>
             </div>
-            <button onClick={requestPayout} disabled={available<minPayoutCents}
-              className="w-full px-8 py-3.5 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50">
-              {customAmount ? `📤 Zatraži €${parseFloat(customAmount).toFixed(2)}` : '📤 Zatraži ceo iznos'}
+            <button onClick={()=>requestPayout('sales')} disabled={wallet.sales_balance < minPayoutCents}
+              className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand to-brand2 disabled:opacity-50 text-sm">
+              {salesAmt ? `📤 Zatraži €${parseFloat(salesAmt).toFixed(2)} (Prodaja)` : '📤 Zatraži ceo Prodaja iznos'}
             </button>
           </div>
         )}
-        {msg && (
-          <div className={"mt-4 text-xs " + (msg.type==='ok' ? 'text-lime' : 'text-danger')}>{msg.text}</div>
-        )}
-        <div className="mt-3 text-xs text-white/50">
-          {isRecruit ? 'REGRUT: bilo koji iznos' : 'Minimum: €10'} · Stiže za 12-24h nakon provere
-        </div>
+      </div>
+
+      {msg && (
+        <div className={"text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>{msg.text}</div>
+      )}
+
+      <div className="text-xs text-white/50 text-center">
+        {isRecruit ? 'REGRUT: bilo koji iznos' : 'Minimum: €10'} · Stiže za 12-24h nakon provere
       </div>
 
       <div className="glass rounded-2xl p-5 sm:p-6">
@@ -1991,7 +2074,11 @@ function AdminReelsQueue() {
         athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
         ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
       });
-      // Notify atletu (koristi template iz baze)
+      // Dodaj BODOVE (XP) za odobreni reel — 20 bodova
+      await supa.from('xp_ledger').insert({
+        athlete_id: reel.athlete_id, amount: 20, source: 'reel',
+        description: 'Odobren reel +20 BODOVA'
+      });
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
     } else if (status === 'rejected') {
       await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
@@ -2034,11 +2121,10 @@ function AdminPayoutQueue() {
     const upd = { status, approved_at: new Date().toISOString() };
     if (status==='paid') upd.paid_at = new Date().toISOString();
     await supa.from('payout_requests').update(upd).eq('id', id);
+    // PAZNJA: ne menjamo earnings_ledger vise. View athlete_wallet racuna pravo:
+    //   balance_available = sum(earnings 'available') - sum(payouts 'pending'+'approved'+'paid')
+    // Pa atleta vidi tacno: ako je imao 0.75 i zatrazio 0.10, ostane mu 0.65.
     if (status==='paid' && item) {
-      // Mark earnings as paid
-      await supa.from('earnings_ledger').update({ status:'paid', payout_request_id: id, paid_at: new Date().toISOString() })
-        .eq('athlete_id', item.athlete_id).eq('status','available').is('payout_request_id', null);
-      // Notify atletu (template iz baze)
       await sendTemplated(item.athlete_id, 'payout_paid', { amount: ((item.amount_cents||0)/100).toFixed(2) }, '#/isplate');
     } else if (status==='rejected' && item) {
       await sendTemplated(item.athlete_id, 'payout_rejected', {}, '#/isplate');
@@ -2549,11 +2635,65 @@ function getProgress(req, snap) {
 }
 
 // === RANG LISTA (Leaderboard) ===
+// === Public profile modal (klik na atletu u rang listi) ===
+function AthletePublicProfile({ athlete, onClose }) {
+  const [stats, setStats] = useState({ reels: 0, sales: 0, bodovi: 0 });
+  useEffect(() => {
+    if (!athlete?.id) return;
+    Promise.all([
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
+      supa.from('athlete_bodovi').select('total_bodovi').eq('athlete_id', athlete.id).maybeSingle()
+    ]).then(([r,s,b])=>{
+      setStats({ reels: r.count||0, sales: s.count||0, bodovi: b.data?.total_bodovi||0 });
+    });
+  }, [athlete?.id]);
+
+  const theme = LEVEL_THEME[athlete?.level || 'recruit'];
+  const avatar = athlete?.profiles?.avatar_url;
+  const name = athlete?.profiles?.full_name || athlete?.profiles?.email?.split('@')[0] || 'Atleta';
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-bg0/95 backdrop-blur-xl flex items-center justify-center p-4" onClick={onClose}>
+      <div className="glass-strong rounded-3xl p-6 max-w-md w-full text-center" onClick={e=>e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-2xl text-white/60">✕</button>
+        <div className="w-24 h-24 mx-auto rounded-full overflow-hidden bg-bg0 border-2 mb-4" style={{borderColor: theme.color+'80'}}>
+          {avatar
+            ? <img src={avatar} alt="" className="w-full h-full object-cover"/>
+            : <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>}
+        </div>
+        <h2 className="font-display font-black text-xl mb-1">{name}</h2>
+        <div className="text-xs font-bold uppercase tracking-wider mb-5" style={{color: theme.color}}>
+          {theme.emoji} {theme.name}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="glass rounded-xl p-3">
+            <div className="text-2xl">🎬</div>
+            <div className="font-display font-black text-xl">{stats.reels}</div>
+            <div className="text-[9px] uppercase text-white/50">Reels</div>
+          </div>
+          <div className="glass rounded-xl p-3">
+            <div className="text-2xl">💎</div>
+            <div className="font-display font-black text-xl">{stats.sales}</div>
+            <div className="text-[9px] uppercase text-white/50">Prodaje</div>
+          </div>
+          <div className="glass rounded-xl p-3">
+            <div className="text-2xl">⚡</div>
+            <div className="font-display font-black text-xl">{stats.bodovi}</div>
+            <div className="text-[9px] uppercase text-white/50">BODOVA</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LeaderboardPage({ athlete }) {
   const [period, setPeriod] = useState('month'); // month | all
   const [metric, setMetric] = useState('reels'); // reels | sales | xp
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(null);
 
   useEffect(() => { load(); }, [period, metric]);
 
@@ -2567,10 +2707,10 @@ function LeaderboardPage({ athlete }) {
       .eq('status','active').limit(200);
     const ids = (rawAthletes||[]).map(a => a.id);
     const { data: profs } = ids.length
-      ? await supa.from('profiles').select('id, full_name, email').in('id', ids)
+      ? await supa.from('profiles').select('id, full_name, email, avatar_url').in('id', ids)
       : { data: [] };
     const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
-    const allAthletes = (rawAthletes||[]).map(a => ({ ...a, profiles: pMap[a.id] || { full_name: a.name, email: '' } }));
+    const allAthletes = (rawAthletes||[]).map(a => ({ ...a, profiles: pMap[a.id] || { full_name: a.name, email: '', avatar_url: null } }));
 
     // SAD uzmemo stats za izabranu metriku
     const map = {};
@@ -2654,11 +2794,19 @@ function LeaderboardPage({ athlete }) {
             const lvl = r.athlete?.level || 'recruit';
             const lvlTheme = LEVEL_THEME[lvl];
             const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+            const avatar = r.athlete?.profiles?.avatar_url;
             return (
-              <div key={r.id} className={"flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5 " + (isMe ? 'bg-brand/10' : '')}>
+              <button key={r.id} onClick={()=>setProfileOpen(r.athlete)}
+                className={"w-full flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5 hover:bg-white/5 text-left transition " + (isMe ? 'bg-brand/10' : '')}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={"w-9 text-center font-black " + (i<3 ? 'text-2xl' : 'text-sm text-white/40')}>
+                  <div className={"w-9 text-center font-black shrink-0 " + (i<3 ? 'text-2xl' : 'text-sm text-white/40')}>
                     {medal || '#'+(i+1)}
+                  </div>
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
+                    {avatar
+                      ? <img src={avatar} alt="" className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex items-center justify-center text-base">👤</div>
+                    }
                   </div>
                   <div className="min-w-0">
                     <div className="font-bold text-sm truncate">{r.athlete?.profiles?.full_name || r.athlete?.profiles?.email?.split('@')[0] || '—'} {isMe && <span className="text-brand">(ti)</span>}</div>
@@ -2666,11 +2814,13 @@ function LeaderboardPage({ athlete }) {
                   </div>
                 </div>
                 <div className="font-display font-black text-base shrink-0">{r.val}</div>
-              </div>
+              </button>
             );
           })}
         </div>
       )}
+
+      {profileOpen && <AthletePublicProfile athlete={profileOpen} onClose={()=>setProfileOpen(null)}/>}
     </div>
   );
 }
