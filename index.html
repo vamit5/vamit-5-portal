@@ -886,14 +886,20 @@ function ReelsPage({ athlete, profile }) {
   useEffect(()=> { if(athlete) loadReels(); }, [athlete?.id]);
 
   async function loadReels() {
-    const [{ data: reelsData }, { data: earn }] = await Promise.all([
-      supa.from('reels').select('*').eq('athlete_id', athlete.id).order('submitted_at',{ascending:false}).limit(50),
-      supa.from('earnings_ledger').select('ref_id, amount_cents, status').eq('athlete_id', athlete.id).eq('source','reel').eq('ref_table','reels')
-    ]);
-    setReels(reelsData||[]);
-    const map = {};
-    (earn||[]).forEach(e => { if (e.ref_id) map[e.ref_id] = e; });
-    setEarningsMap(map);
+    try {
+      const [r1, r2] = await Promise.all([
+        supa.from('reels').select('*').eq('athlete_id', athlete.id).order('submitted_at',{ascending:false}).limit(50),
+        supa.from('earnings_ledger').select('ref_id, amount_cents, status').eq('athlete_id', athlete.id).eq('source','reel').eq('ref_table','reels')
+      ]);
+      if (r1.error) { setMsg({type:'err', text:'reels load: ' + r1.error.message}); return; }
+      if (r2.error) console.warn('earnings load:', r2.error.message);
+      setReels(r1.data||[]);
+      const map = {};
+      (r2.data||[]).forEach(e => { if (e.ref_id) map[e.ref_id] = e; });
+      setEarningsMap(map);
+    } catch(e) {
+      setMsg({type:'err', text: 'Greška: ' + e.message});
+    }
   }
 
   // ADMIN guard
@@ -1030,23 +1036,31 @@ function KursPage({ athlete }) {
   const [openLesson, setOpenLesson] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [progress, setProgress] = useState({});
+  const [loadErr, setLoadErr] = useState(null);
 
   useEffect(()=> { loadModules(); }, [athlete?.id]);
   async function loadModules() {
-    const [modsResp, lessonsResp, progResp] = await Promise.all([
-      supa.from('course_modules').select('*').order('order_idx'),
-      supa.from('course_lessons').select('*').order('order_idx'),
-      athlete?.id ? supa.from('lesson_progress').select('lesson_id, completed_at').eq('athlete_id', athlete.id) : Promise.resolve({data:[]})
-    ]);
-    const lessons = (lessonsResp.data||[]).filter(l => l.status !== 'archived');
-    const map = (modsResp.data||[]).filter(m => m.status !== 'archived').map(m => ({...m, lessons: lessons.filter(l=>l.module_id===m.id)}));
-    setModules(map);
-    const progMap = {};
-    (progResp.data||[]).forEach(p => { if (p.completed_at) progMap[p.lesson_id] = true; });
-    setProgress(progMap);
-    // Prvi modul otvori po default-u
-    if (map.length > 0 && Object.keys(expanded).length === 0) {
-      setExpanded({ [map[0].id]: true });
+    setLoadErr(null);
+    try {
+      const [modsResp, lessonsResp, progResp] = await Promise.all([
+        supa.from('course_modules').select('*').order('order_idx'),
+        supa.from('course_lessons').select('*').order('order_idx'),
+        athlete?.id ? supa.from('lesson_progress').select('lesson_id, completed_at').eq('athlete_id', athlete.id) : Promise.resolve({data:[]})
+      ]);
+      if (modsResp.error) throw new Error('course_modules: ' + modsResp.error.message);
+      if (lessonsResp.error) throw new Error('course_lessons: ' + lessonsResp.error.message);
+      const lessons = (lessonsResp.data||[]).filter(l => l.status !== 'archived');
+      const map = (modsResp.data||[]).filter(m => m.status !== 'archived').map(m => ({...m, lessons: lessons.filter(l=>l.module_id===m.id)}));
+      setModules(map);
+      const progMap = {};
+      (progResp.data||[]).forEach(p => { if (p.completed_at) progMap[p.lesson_id] = true; });
+      setProgress(progMap);
+      if (map.length > 0 && Object.keys(expanded).length === 0) {
+        setExpanded({ [map[0].id]: true });
+      }
+    } catch(e) {
+      console.error('KursPage load fail:', e);
+      setLoadErr(e.message);
     }
   }
 
@@ -1086,7 +1100,9 @@ function KursPage({ athlete }) {
       )}
 
       {modules.length === 0 ? (
-        <div className="glass rounded-2xl p-8 text-center text-white/60">Kurs još uvek nema sadržaja — admin uskoro dodaje.</div>
+        loadErr
+          ? <div className="glass rounded-2xl p-6 text-sm bg-danger/10 border border-danger/30 text-danger">❌ Ne mogu da učitam kurs: {loadErr}<br/><span className="text-white/60 text-xs">Najverovatnije nije pokrenut RLS SQL — javi adminu.</span></div>
+          : <div className="glass rounded-2xl p-8 text-center text-white/60">Kurs još uvek nema sadržaja — admin uskoro dodaje.</div>
       ) : (
         <div className="space-y-3">
           {modules.map((m, idx) => {
