@@ -496,18 +496,22 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
 
   return (
     <div className="relative z-10 min-h-screen">
-      {/* TOP BAR */}
-      <header className="sticky top-0 z-30 glass-strong border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+      {/* TOP BAR — safe-area-inset za iOS notch */}
+      <header className="sticky top-0 z-30 glass-strong border-b border-white/5"
+              style={{paddingTop: 'env(safe-area-inset-top, 0px)'}}>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2">
           <Logo />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full glass">
               <span className="text-lg">{theme.emoji}</span>
               <span className="text-xs font-black" style={{color:theme.color}}>{theme.name}</span>
             </div>
             <NotificationBell athlete={athlete}/>
-            <button onClick={onLogout} className="px-3 py-1.5 rounded-lg text-xs bg-white/5 border border-white/10 hover:bg-white/10">Logout</button>
-            <button onClick={()=>setMenuOpen(true)} className="md:hidden p-2 rounded-lg bg-white/5 border border-white/10">☰</button>
+            <button onClick={onLogout} className="hidden sm:block px-3 py-1.5 rounded-lg text-xs bg-white/5 border border-white/10 hover:bg-white/10">Logout</button>
+            <button onClick={()=>setMenuOpen(true)}
+              className="md:hidden w-11 h-11 flex items-center justify-center rounded-lg bg-white/10 border border-white/15 text-xl font-black hover:bg-white/15 active:scale-95 transition">
+              ☰
+            </button>
           </div>
         </div>
       </header>
@@ -561,6 +565,20 @@ function MyTeam({ athlete }) {
   const [members, setMembers] = useState([]);
   const [teamEarned, setTeamEarned] = useState({ total: 0, available: 0 });
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const inviteLink = athlete?.promo_code
+    ? `${window.location.origin}/?ref=${athlete.promo_code}`
+    : '';
+
+  function copyInvite() {
+    if (!inviteLink) return;
+    try {
+      navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(()=>setCopied(false), 2000);
+    } catch(e){}
+  }
 
   useEffect(()=>{ if (athlete?.id) load(); }, [athlete?.id]);
   async function load() {
@@ -588,8 +606,6 @@ function MyTeam({ athlete }) {
     setLoading(false);
   }
 
-  const inviteLink = athlete?.rewardful_token || 'https://vamit-5-2.getrewardful.com/signup';
-
   return (
     <div className="glass rounded-2xl p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
@@ -612,6 +628,18 @@ function MyTeam({ athlete }) {
           <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Dostupno</div>
           <div className="font-display font-black text-lg text-gold">{formatEUR(teamEarned.available)}</div>
         </div>
+      </div>
+
+      {/* INVITE LINK — atleta deli ovaj link, ko se uloguje preko njega → automatski u njegovom timu */}
+      <div className="p-3 rounded-xl bg-brand/5 border border-brand/30 mb-3">
+        <div className="text-[10px] uppercase tracking-wider text-brand font-bold mb-1.5">📨 Tvoj invite link (deli sa prijateljima)</div>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-[10px] sm:text-xs text-brand break-all">{inviteLink}</code>
+          <button onClick={copyInvite} className="shrink-0 px-2.5 py-1.5 rounded-lg bg-brand text-bg0 text-[10px] font-bold whitespace-nowrap">
+            {copied ? '✓ Kopirano' : '📋 Kopiraj'}
+          </button>
+        </div>
+        <div className="text-[10px] text-white/50 mt-1.5">Kad neko klikne link i registruje se preko Rewardful — automatski ulazi u tvoj tim i ti dobijaš 15% od svake njegove prodaje.</div>
       </div>
 
       {loading ? (
@@ -683,7 +711,7 @@ function Dashboard({ athlete, profile }) {
       // Sve earnings rows (svi statusi)
       supa.from('earnings_ledger').select('amount_cents, status, source').eq('athlete_id', athlete.id),
       // Paid + pending + approved payouts da znamo koliko vec obecano za isplatu
-      supa.from('payout_requests').select('amount_cents').eq('athlete_id', athlete.id).in('status', ['pending','approved','paid']),
+      supa.from('payout_requests').select('amount_cents, status').eq('athlete_id', athlete.id).in('status', ['pending','approved','paid']),
       supa.from('level_configs').select('*').eq('level_key', athlete.level).maybeSingle(),
       supa.from('reels').select('submitted_at').eq('athlete_id', athlete.id).eq('status','approved').order('submitted_at',{ascending:false}).limit(120),
       supa.from('xp_ledger').select('amount').eq('athlete_id', athlete.id)
@@ -695,8 +723,11 @@ function Dashboard({ athlete, profile }) {
     const earnAvailable = sumByStatus('available');
     const earnPending = sumByStatus('pending');
     const earnLifetime = earningsArr.reduce((s,x)=>s+x.amount_cents,0);
-    const paidPayoutsTotal = (paidPayouts.data||[]).reduce((s,x)=>s+x.amount_cents,0);
+    const allPayouts = paidPayouts.data || [];
+    const paidPayoutsTotal = allPayouts.reduce((s,x)=>s+x.amount_cents,0);
     const realBalance = earnAvailable - paidPayoutsTotal;
+    // "Na cekanju" = isplate koje admin jos uvek nije izvrsio (pending + approved zahtevi)
+    const pendingPayoutsTotal = allPayouts.filter(p => p.status === 'pending' || p.status === 'approved').reduce((s,x)=>s+x.amount_cents,0);
     const totalBodovi = (xpRows.data||[]).reduce((s,x)=>s+(x.amount||0),0);
 
     // === STREAK CALC ===
@@ -719,7 +750,7 @@ function Dashboard({ athlete, profile }) {
       reels_pending: r3.count||0,
       sales_total: salesTotal,
       sales_month: sm.count||0,
-      earnings_pending: earnPending,
+      earnings_pending: pendingPayoutsTotal,
       earnings_available: realBalance,
       earnings_lifetime: earnLifetime,
       streak,
@@ -779,10 +810,6 @@ function Dashboard({ athlete, profile }) {
           <div>
             <div className="text-xs uppercase tracking-[0.2em] font-bold mb-2" style={{color:theme.color}}>Tvoj nivo</div>
             <div className="font-display text-3xl sm:text-4xl font-black" style={{color:theme.color}}>{theme.emoji} {theme.name} ATHLETE</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-white/50">BODOVA</div>
-            <div className="font-black text-xl" style={{color:theme.color}}>{athlete.current_xp || 0}</div>
           </div>
         </div>
 
@@ -876,8 +903,7 @@ function Dashboard({ athlete, profile }) {
       </div>
 
       {/* OVERVIEW STATS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MiniStat label="BODOVI" value={stats.bodovi} sub="ukupno" />
+      <div className="grid grid-cols-3 gap-3">
         <MiniStat label="Reels (ukupno)" value={stats.reels_total} sub={stats.reels_pending + ' na čekanju'} />
         <MiniStat label="Reels (mesec)" value={stats.reels_month} sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)} />
         <MiniStat label="Prodaje (ukupno)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
@@ -2124,6 +2150,7 @@ function AdminPage() {
           {k:'reels',         label:'🎬 Reels Queue'},
           {k:'payouts',       label:'💸 Payouts'},
           {k:'athletes',      label:'👥 Atlete'},
+          {k:'teams',         label:'🌐 Timovi'},
           {k:'notifications', label:'🔔 Broadcast'},
           {k:'templates',     label:'📨 Notif. Templates'},
           {k:'landing',       label:'📝 Landing CMS'},
@@ -2143,6 +2170,7 @@ function AdminPage() {
       {tab==='reels' && <AdminReelsQueue/>}
       {tab==='payouts' && <AdminPayoutQueue/>}
       {tab==='athletes' && <AdminAthletes/>}
+      {tab==='teams' && <AdminTeams/>}
       {tab==='notifications' && <AdminNotifications/>}
       {tab==='templates' && <AdminNotifTemplates/>}
       {tab==='landing' && <AdminLanding/>}
@@ -4324,6 +4352,148 @@ function AdminReelsQueueLarge() {
   );
 }
 
+// =====================================================
+// === ADMIN: TIM PREGLED ===
+// =====================================================
+function AdminTeams() {
+  const [teams, setTeams] = useState([]);
+  const [allAthletes, setAllAthletes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({});
+
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    setLoading(true);
+    // Sve atlete sa profile + ko ih je doveo
+    const { data: ath } = await supa.from('athletes').select('id, level, status, name, referred_by, promo_code, joined_at').limit(500);
+    const ids = (ath||[]).map(a => a.id);
+    const { data: profs } = ids.length ? await supa.from('profiles').select('id, full_name, email, avatar_url').in('id', ids) : { data: [] };
+    const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
+
+    const enriched = (ath||[]).map(a => ({ ...a, profile: pMap[a.id] }));
+    setAllAthletes(enriched);
+
+    // Group by recruiter
+    const recruiters = enriched.filter(a => enriched.some(m => m.referred_by === a.id));
+    // Earnings per recruiter (source='team')
+    const { data: teamEarn } = await supa.from('earnings_ledger').select('athlete_id, amount_cents').eq('source','team');
+    const earnMap = {};
+    (teamEarn||[]).forEach(e => { earnMap[e.athlete_id] = (earnMap[e.athlete_id]||0) + e.amount_cents; });
+
+    const teamRows = recruiters.map(r => ({
+      recruiter: r,
+      members: enriched.filter(m => m.referred_by === r.id),
+      earned: earnMap[r.id] || 0
+    })).sort((a,b) => b.members.length - a.members.length);
+
+    setTeams(teamRows);
+    setLoading(false);
+  }
+
+  async function assignReferrer(athleteId, referrerId) {
+    const refId = referrerId === '__NONE__' ? null : referrerId;
+    const { error } = await supa.from('athletes').update({ referred_by: refId }).eq('id', athleteId);
+    if (error) alert('Greska: ' + error.message);
+    else load();
+  }
+
+  if (loading) return <div className="text-center py-10 text-white/50">Učitavam...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
+        🌐 Svi timovi u sistemu. Tim se gradi kad atleta klikne <code className="text-brand">/?ref=PROMO_KOD</code> link drugog atlete.
+        Ti možeš ručno da dodelis atletu nekom timu ispod.
+      </div>
+
+      <div className="glass rounded-2xl p-4">
+        <div className="font-bold text-sm mb-3">📊 Pregled timova ({teams.length})</div>
+        {teams.length === 0 ? (
+          <div className="text-center py-6 text-xs text-white/50">Još nema timova. Atlete dele svoj invite link da bi pravili tim.</div>
+        ) : (
+          <div className="space-y-2">
+            {teams.map(t => {
+              const theme = LEVEL_THEME[t.recruiter.level] || LEVEL_THEME.recruit;
+              const isOpen = !!expanded[t.recruiter.id];
+              return (
+                <div key={t.recruiter.id} className="glass rounded-xl overflow-hidden border border-white/5">
+                  <button onClick={()=>setExpanded({...expanded, [t.recruiter.id]: !isOpen})}
+                    className="w-full p-3 flex items-center justify-between text-left hover:bg-white/5">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="text-xl shrink-0">{isOpen?'▼':'▶'}</div>
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
+                        {t.recruiter.profile?.avatar_url
+                          ? <img src={t.recruiter.profile.avatar_url} className="w-full h-full object-cover" alt=""/>
+                          : <div className="w-full h-full flex items-center justify-center">👤</div>}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-sm truncate">{t.recruiter.profile?.full_name || t.recruiter.profile?.email}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{color:theme.color}}>{theme.emoji} {theme.name} · kod: {t.recruiter.promo_code}</div>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-display font-black text-lg text-brand">{t.members.length}</div>
+                      <div className="text-[9px] uppercase text-white/40">atleta · {formatEUR(t.earned)}</div>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-white/5 bg-bg0/40 p-3 space-y-2">
+                      {t.members.map(m => {
+                        const mt = LEVEL_THEME[m.level] || LEVEL_THEME.recruit;
+                        return (
+                          <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
+                            <div className="w-7 h-7 rounded-full overflow-hidden bg-bg0 shrink-0">
+                              {m.profile?.avatar_url
+                                ? <img src={m.profile.avatar_url} className="w-full h-full object-cover" alt=""/>
+                                : <div className="w-full h-full flex items-center justify-center text-xs">👤</div>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-xs truncate">{m.profile?.full_name || m.profile?.email}</div>
+                              <div className="text-[9px] font-bold uppercase" style={{color:mt.color}}>{mt.name} · {formatDate(m.joined_at)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* RUČNA DODELA */}
+      <div className="glass rounded-2xl p-4">
+        <div className="font-bold text-sm mb-3">✏️ Ručna dodela (povezi atletu sa onim ko ga je doveo)</div>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {allAthletes.map(a => {
+            const ref = allAthletes.find(x => x.id === a.referred_by);
+            return (
+              <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg bg-white/5 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="font-bold text-xs truncate">{a.profile?.full_name || a.profile?.email}</div>
+                  <span className="text-[10px] text-white/40">({a.level})</span>
+                </div>
+                <select value={a.referred_by || '__NONE__'}
+                  onChange={e => assignReferrer(a.id, e.target.value)}
+                  className="px-2 py-1 rounded bg-bg1 border border-white/10 text-[11px]">
+                  <option value="__NONE__">— bez referrera —</option>
+                  {allAthletes.filter(x => x.id !== a.id).map(r => (
+                    <option key={r.id} value={r.id}>{r.profile?.full_name || r.profile?.email}</option>
+                  ))}
+                </select>
+                {ref && <span className="text-[10px] text-brand">→ {ref.profile?.full_name || ref.profile?.email}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // === APP ROOT ===
 function App() {
   const hash = useHash();
@@ -4344,6 +4514,41 @@ function App() {
         .catch(err => console.log('SW reg failed:', err));
     }
   }, []);
+
+  // === TIM INVITE: sacuvaj ref param u localStorage (da kasnije linkujemo atletu) ===
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref') || params.get('via');
+      if (ref) {
+        localStorage.setItem('vamit_ref', ref.toUpperCase().trim());
+        console.log('[VAMIT] Ref saved:', ref);
+      }
+    } catch(e){}
+  }, []);
+
+  // === Kad atleta prvi put udje, link je sa onim ko je doveo ===
+  useEffect(() => {
+    async function autoLink() {
+      if (!athlete || athlete.referred_by) return;
+      let ref = null;
+      try { ref = localStorage.getItem('vamit_ref'); } catch(e){}
+      if (!ref) return;
+      // Nadji referrera po promo_code
+      const { data: referrer } = await supa.from('athletes').select('id, promo_code')
+        .eq('promo_code', ref)
+        .maybeSingle();
+      if (referrer && referrer.id && referrer.id !== athlete.id) {
+        const { error } = await supa.from('athletes').update({ referred_by: referrer.id }).eq('id', athlete.id);
+        if (!error) {
+          try { localStorage.removeItem('vamit_ref'); } catch(e){}
+          if (refreshProfile) refreshProfile(athlete.id);
+          console.log('[VAMIT] Linked to referrer:', referrer.id);
+        }
+      }
+    }
+    autoLink();
+  }, [athlete?.id, athlete?.referred_by]);
 
   useEffect(() => {
     if (!loading && user && (route === '/' || route === '/login')) {
