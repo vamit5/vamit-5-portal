@@ -556,6 +556,96 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
 }
 
 // === DASHBOARD ===
+// === MOJ TIM ===
+function MyTeam({ athlete }) {
+  const [members, setMembers] = useState([]);
+  const [teamEarned, setTeamEarned] = useState({ total: 0, available: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{ if (athlete?.id) load(); }, [athlete?.id]);
+  async function load() {
+    setLoading(true);
+    const [memResp, earnResp] = await Promise.all([
+      // Atlete koje je on doveo
+      supa.from('athletes').select('id, level, joined_at, name').eq('referred_by', athlete.id).limit(50),
+      // Tim zarada (source='team')
+      supa.from('earnings_ledger').select('amount_cents, status').eq('athlete_id', athlete.id).eq('source','team')
+    ]);
+    const memList = memResp.data || [];
+    // Profile join
+    if (memList.length) {
+      const ids = memList.map(m => m.id);
+      const { data: profs } = await supa.from('profiles').select('id, full_name, email, avatar_url').in('id', ids);
+      const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
+      memList.forEach(m => { m.profile = pMap[m.id] || { full_name: m.name }; });
+    }
+    setMembers(memList);
+    const earn = earnResp.data || [];
+    setTeamEarned({
+      total: earn.reduce((s,x)=>s+x.amount_cents,0),
+      available: earn.filter(x=>x.status==='available').reduce((s,x)=>s+x.amount_cents,0)
+    });
+    setLoading(false);
+  }
+
+  const inviteLink = athlete?.rewardful_token || 'https://vamit-5-2.getrewardful.com/signup';
+
+  return (
+    <div className="glass rounded-2xl p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+        <div>
+          <div className="font-display font-black text-lg">👥 Moj Tim</div>
+          <div className="text-xs text-white/60">15% provizije od prodaja tvog tima — doživotno</div>
+        </div>
+        <div className="text-right">
+          <div className="font-display font-black text-2xl text-brand">{members.length}</div>
+          <div className="text-[10px] uppercase tracking-wider text-white/50">atleta</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="p-3 rounded-xl bg-bg0/40">
+          <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Zarada od tima</div>
+          <div className="font-display font-black text-lg text-lime">{formatEUR(teamEarned.total)}</div>
+        </div>
+        <div className="p-3 rounded-xl bg-bg0/40">
+          <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Dostupno</div>
+          <div className="font-display font-black text-lg text-gold">{formatEUR(teamEarned.available)}</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-xs text-white/50 text-center py-3">Učitavam...</div>
+      ) : members.length === 0 ? (
+        <div className="text-center py-4 text-xs text-white/50">
+          Nemaš još nikog u timu.<br/>
+          <span className="text-white/40">Tim se gradi kad neko se prijavi preko TVOG Rewardful linka.</span>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {members.map(m => {
+            const t = LEVEL_THEME[m.level] || LEVEL_THEME.recruit;
+            return (
+              <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
+                  {m.profile?.avatar_url
+                    ? <img src={m.profile.avatar_url} alt="" className="w-full h-full object-cover"/>
+                    : <div className="w-full h-full flex items-center justify-center text-sm">👤</div>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm truncate">{m.profile?.full_name || m.profile?.email?.split('@')[0] || '—'}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{color:t.color}}>{t.emoji} {t.name}</div>
+                </div>
+                <div className="text-[10px] text-white/40">{formatDate(m.joined_at)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dashboard({ athlete, profile }) {
   const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0, bodovi:0 });
   const [activity, setActivity] = useState([]);
@@ -583,19 +673,31 @@ function Dashboard({ athlete, profile }) {
 
   async function loadAll() {
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-    const [r1, r2, r3, sa, sm, ep, wallet, el, lc, reelsDates, bod] = await Promise.all([
+    // Direktni queries — bez view-a (siguran nacin)
+    const [r1, r2, r3, sa, sm, allEarnings, paidPayouts, lc, reelsDates, xpRows] = await Promise.all([
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthStart.toISOString()),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed').gte('created_at', monthStart.toISOString()),
-      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).eq('status','pending'),
-      supa.from('athlete_wallet').select('*').eq('athlete_id', athlete.id).maybeSingle(),
-      supa.from('earnings_ledger').select('amount_cents').eq('athlete_id', athlete.id).in('status', ['available','paid','pending']),
+      // Sve earnings rows (svi statusi)
+      supa.from('earnings_ledger').select('amount_cents, status, source').eq('athlete_id', athlete.id),
+      // Paid + pending + approved payouts da znamo koliko vec obecano za isplatu
+      supa.from('payout_requests').select('amount_cents').eq('athlete_id', athlete.id).in('status', ['pending','approved','paid']),
       supa.from('level_configs').select('*').eq('level_key', athlete.level).maybeSingle(),
       supa.from('reels').select('submitted_at').eq('athlete_id', athlete.id).eq('status','approved').order('submitted_at',{ascending:false}).limit(120),
-      supa.from('athlete_bodovi').select('total_bodovi').eq('athlete_id', athlete.id).maybeSingle()
+      supa.from('xp_ledger').select('amount').eq('athlete_id', athlete.id)
     ]);
+
+    // Racunamo brojeve direktno (nije zavisno od views/RLS koje cesto puca)
+    const earningsArr = allEarnings.data || [];
+    const sumByStatus = (st) => earningsArr.filter(e => e.status === st).reduce((s,x)=>s+x.amount_cents,0);
+    const earnAvailable = sumByStatus('available');
+    const earnPending = sumByStatus('pending');
+    const earnLifetime = earningsArr.reduce((s,x)=>s+x.amount_cents,0);
+    const paidPayoutsTotal = (paidPayouts.data||[]).reduce((s,x)=>s+x.amount_cents,0);
+    const realBalance = earnAvailable - paidPayoutsTotal;
+    const totalBodovi = (xpRows.data||[]).reduce((s,x)=>s+(x.amount||0),0);
 
     // === STREAK CALC ===
     const dates = new Set((reelsDates.data||[]).map(r => (r.submitted_at||'').slice(0,10)));
@@ -617,11 +719,11 @@ function Dashboard({ athlete, profile }) {
       reels_pending: r3.count||0,
       sales_total: salesTotal,
       sales_month: sm.count||0,
-      earnings_pending: (ep.data||[]).reduce((s,x)=>s+x.amount_cents,0),
-      earnings_available: wallet?.balance_available || 0,
-      earnings_lifetime: (el.data||[]).reduce((s,x)=>s+x.amount_cents,0),
+      earnings_pending: earnPending,
+      earnings_available: realBalance,
+      earnings_lifetime: earnLifetime,
       streak,
-      bodovi: bod?.total_bodovi || 0
+      bodovi: totalBodovi
     });
     setLevelCfg(lc.data);
 
@@ -677,10 +779,6 @@ function Dashboard({ athlete, profile }) {
           <div>
             <div className="text-xs uppercase tracking-[0.2em] font-bold mb-2" style={{color:theme.color}}>Tvoj nivo</div>
             <div className="font-display text-3xl sm:text-4xl font-black" style={{color:theme.color}}>{theme.emoji} {theme.name} ATHLETE</div>
-            <div className="text-sm text-white/60 mt-2">
-              Provizija: <b style={{color:theme.color}}>{Math.round((levelCfg?.sales_commission_pct||0.35)*100)}%</b>
-              {' · '}€<b style={{color:theme.color}}>{((levelCfg?.reel_reward_cents||30)/100).toFixed(2)}</b> po reel-u
-            </div>
           </div>
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wider text-white/50">BODOVA</div>
@@ -753,7 +851,7 @@ function Dashboard({ athlete, profile }) {
 
           {introActive && (
             <div className="p-3 rounded-xl bg-lime/10 border border-lime/30 text-xs sm:text-sm">
-              ✅ <b className="text-lime">Bonus za RECRUIT atlete:</b> zaradu za reels-ove dobijaš ODMAH na račun, bez čekanja prodaja. Bonus traje još {Math.ceil((new Date(athlete.recruit_intro_period_until) - new Date())/86400000)} dana.
+              ✅ <b className="text-lime">Bonus za RECRUIT:</b> zaradu od reels-ova dobijaš ODMAH na račun (bez čekanja prodaja). Bonus aktivan još <b>{daysRemaining} dana</b>.
             </div>
           )}
         </div>
@@ -765,6 +863,9 @@ function Dashboard({ athlete, profile }) {
         <StatCard label="Na čekanju" value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
         <StatCard label="Ukupna zarada" value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
       </div>
+
+      {/* TIM SECTION */}
+      <MyTeam athlete={athlete}/>
 
       {/* QUICK ACTIONS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -4234,10 +4335,13 @@ function App() {
     if (el && !loading) el.style.display='none';
   }, [loading]);
 
-  // === SERVICE WORKER REGISTRATION ===
+  // === SERVICE WORKER REGISTRATION (force update svaki put) ===
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW reg failed:', err));
+      // Registruj sa updateViaCache 'none' da uvek povuce nov sw.js
+      navigator.serviceWorker.register('/sw.js?v=5', { updateViaCache: 'none' })
+        .then(reg => { reg.update(); })
+        .catch(err => console.log('SW reg failed:', err));
     }
   }, []);
 
