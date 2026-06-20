@@ -1,12 +1,16 @@
-// VAMIT-5 Portal Service Worker v1
-const VERSION = 'vamit5-v1';
+// VAMIT-5 Portal Service Worker v3 — NOV LOGO
+const VERSION = 'vamit5-v3';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(self.clients.claim());
+  e.waitUntil(Promise.all([
+    self.clients.claim(),
+    // Brisemo stare cache-ove da nov logo bude vidljiv
+    caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
+  ]));
 });
 
 // Network-first sa fallback (online-prvo, offline-keširano)
