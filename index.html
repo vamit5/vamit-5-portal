@@ -228,6 +228,12 @@ function useAuth() {
 
 // === UTILS ===
 const formatEUR = (cents) => '€' + ((cents||0)/100).toFixed(2);
+// Parsira string sa zarezom ili tackom — '0,35' i '0.35' oba postaju 0.35
+const parseAmount = (str) => {
+  if (!str) return NaN;
+  const v = parseFloat(String(str).replace(',', '.').trim());
+  return isNaN(v) ? NaN : v;
+};
 const formatDate = (d) => d ? new Date(d).toLocaleDateString('sr-Latn',{day:'2-digit', month:'short', year:'numeric'}) : '-';
 const fromNow = (d) => {
   if(!d) return '';
@@ -1930,7 +1936,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
     const amtStr = source === 'reels' ? reelsAmt : source === 'team' ? teamAmt : salesAmt;
     const balance = source === 'reels' ? wallet.reels_balance : source === 'team' ? wallet.team_balance : wallet.sales_balance;
     const sourceLabel = source === 'reels' ? 'Reels' : source === 'team' ? 'Tim' : 'Prodaja';
-    const reqEur = parseFloat((amtStr||'').replace(',','.'));
+    const reqEur = parseAmount(amtStr);
     const reqCents = (amtStr && !isNaN(reqEur) && reqEur > 0) ? Math.round(reqEur * 100) : balance;
 
     if (reqCents <= 0) { setMsg({type:'err', text:'Unesi pozitivan iznos.'}); return; }
@@ -1998,7 +2004,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
               </div>
               <button onClick={()=>requestPayout('reels')} disabled={wallet.reels_balance < minPayoutCents}
                 className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50 text-sm">
-                {reelsAmt ? `📤 Zatraži €${parseFloat(reelsAmt).toFixed(2)} (Reels)` : '📤 Zatraži ceo Reels iznos'}
+                {reelsAmt && !isNaN(parseAmount(reelsAmt)) ? `📤 Zatraži €${parseAmount(reelsAmt).toFixed(2)} (Reels)` : '📤 Zatraži ceo Reels iznos'}
               </button>
             </div>
           )
@@ -2035,7 +2041,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
             </div>
             <button onClick={()=>requestPayout('sales')} disabled={wallet.sales_balance < minPayoutCents}
               className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand to-brand2 disabled:opacity-50 text-sm">
-              {salesAmt ? `📤 Zatraži €${parseFloat(salesAmt).toFixed(2)} (Prodaja)` : '📤 Zatraži ceo Prodaja iznos'}
+              {salesAmt && !isNaN(parseAmount(salesAmt)) ? `📤 Zatraži €${parseAmount(salesAmt).toFixed(2)} (Prodaja)` : '📤 Zatraži ceo Prodaja iznos'}
             </button>
           </div>
         )}
@@ -2059,7 +2065,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
           </button>
         </div>
 
-        {wallet.team_balance > 0 && !pending && (
+        {!pending && (
           <div className="space-y-2 mt-3">
             <div className="flex items-center gap-2">
               <input type="text" inputMode="decimal" value={teamAmt} onChange={e=>setTeamAmt(e.target.value)}
@@ -2070,13 +2076,13 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
             </div>
             <button onClick={()=>requestPayout('team')} disabled={wallet.team_balance < minPayoutCents}
               className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand2 disabled:opacity-50 text-sm">
-              {teamAmt ? `📤 Zatraži €${parseFloat(teamAmt).toFixed(2)} (Tim)` : '📤 Zatraži ceo Tim iznos'}
+              {teamAmt && !isNaN(parseAmount(teamAmt)) ? `📤 Zatraži €${parseAmount(teamAmt).toFixed(2)} (Tim)` : '📤 Zatraži ceo Tim iznos'}
             </button>
-          </div>
-        )}
-        {wallet.team_balance === 0 && (
-          <div className="mt-3 p-3 rounded-xl bg-bg0/40 text-xs text-white/50 text-center">
-            Nema još tim zarade. Kad neko iz tvog tima proda, dobićeš proviziju ovde.
+            {wallet.team_balance === 0 && (
+              <div className="text-[10px] text-white/40 text-center mt-1">
+                Trenutno nemaš tim zarade. Kad neko iz tvog tima proda — pojaviće se ovde.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2191,8 +2197,52 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
             </button>
           </div>
         ) : (
-          <div className="p-4 rounded-xl bg-bg0 border border-white/10 text-sm text-white/60">
-            Link će biti dostupan čim ga sinhronizujemo.
+          <div className="space-y-3">
+            <div className="p-4 rounded-xl bg-bg0/60 border border-gold/30">
+              <div className="text-sm font-bold text-gold mb-2">⚠️ Još nemaš Rewardful link</div>
+              <div className="text-xs text-white/70 mb-3">
+                Da bi pratio prodaje i zarađivao provizije od paketa, treba ti Rewardful affiliate nalog. <strong>2 minuta posao.</strong>
+              </div>
+              <div className="space-y-2">
+                <div className="flex gap-2 items-start text-xs">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">1</span>
+                  <div className="flex-1">
+                    Klikni dugme dole → otvara se Rewardful signup u novom tabu
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start text-xs">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">2</span>
+                  <div className="flex-1">
+                    Registruj se sa <strong className="text-brand">istim email-om</strong> koji koristiš ovde ({profile?.email})
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start text-xs">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">3</span>
+                  <div className="flex-1">
+                    Posle registracije, Rewardful ti daje link tipa <code className="text-brand">https://vamit-5-2.getrewardful.com/?via=TVOJKOD</code> — <strong>kopiraj ga</strong>
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start text-xs">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">4</span>
+                  <div className="flex-1">
+                    Vrati se ovde → zalepi link u polje <strong>"Rewardful affiliate link"</strong> dole → <strong>Sačuvaj</strong>
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start text-xs">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-lime text-bg0 flex items-center justify-center font-black text-[10px]">✓</span>
+                  <div className="flex-1 text-lime font-bold">
+                    Gotovo! Od sad svaka prodaja preko tvog linka ti se pripisuje automatski.
+                  </div>
+                </div>
+              </div>
+            </div>
+            <a href="https://vamit-5-2.getrewardful.com/signup" target="_blank" rel="noopener"
+              className="block w-full py-3 px-4 rounded-xl bg-gradient-to-r from-brand to-brand2 text-bg0 font-extrabold text-sm text-center hover:opacity-90 transition">
+              🚀 Otvori Rewardful registraciju →
+            </a>
+            <div className="text-[10px] text-white/40 text-center">
+              💡 Već si registrovan? Samo zalepi link u polje dole i sačuvaj — sve će raditi.
+            </div>
           </div>
         )}
       </div>
@@ -2820,61 +2870,197 @@ function AdminPayoutQueue() {
 function AdminAthletes() {
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState('joined_at');
+  const [sortDir, setSortDir] = useState('desc');
 
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('athletes').select('*').order('created_at',{ascending:false}).limit(200);
-    // enrich sa profile podacima
-    if (data && data.length) {
-      const ids = data.map(a => a.id);
-      const { data: profs } = await supa.from('profiles').select('id, full_name, email, phone, role').in('id', ids);
-      const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
-      setList(data.map(a => ({ ...a, profiles: pMap[a.id] || null, profile: pMap[a.id] || null })));
-    } else {
-      setList([]);
+    const [athR, profR, earnR, salesR, reelsR] = await Promise.all([
+      supa.from('athletes').select('*').order('created_at',{ascending:false}).limit(500),
+      supa.from('profiles').select('id, full_name, email, phone, role, avatar_url'),
+      supa.from('earnings_ledger').select('athlete_id, amount_cents, status, source'),
+      supa.from('sales').select('athlete_id, amount_cents, status'),
+      supa.from('reels').select('athlete_id, status')
+    ]);
+
+    const aths = athR.data || [];
+    const profs = profR.data || [];
+    const earns = earnR.data || [];
+    const sales = salesR.data || [];
+    const reels = reelsR.data || [];
+
+    const pMap = Object.fromEntries(profs.map(p => [p.id, p]));
+    const aMap = Object.fromEntries(aths.map(a => [a.id, a]));
+
+    // Agregat po atleti
+    function aggBy(arr, athleteId, filterFn, sumKey) {
+      const filtered = arr.filter(x => x.athlete_id === athleteId && (filterFn ? filterFn(x) : true));
+      if (sumKey) return filtered.reduce((s,x)=>s+(x[sumKey]||0), 0);
+      return filtered.length;
     }
+
+    const enriched = aths.map(a => {
+      const prof = pMap[a.id] || {};
+      const recruiter = a.referred_by ? aMap[a.referred_by] : null;
+      const recruiterProf = recruiter ? (pMap[recruiter.id] || {}) : null;
+      return {
+        ...a,
+        profile: prof,
+        profiles: prof,
+        recruiter_name: recruiterProf?.full_name || recruiter?.name || (recruiterProf?.email ? recruiterProf.email.split('@')[0] : null) || null,
+        // Stats
+        reels_approved: aggBy(reels, a.id, r => r.status === 'approved'),
+        reels_pending:  aggBy(reels, a.id, r => r.status === 'pending'),
+        sales_count:    aggBy(sales, a.id, s => s.status === 'confirmed'),
+        sales_volume:   aggBy(sales, a.id, s => s.status === 'confirmed', 'amount_cents'),
+        earned_reels:   aggBy(earns, a.id, e => e.source === 'reel',  'amount_cents'),
+        earned_sales:   aggBy(earns, a.id, e => e.source === 'sale',  'amount_cents'),
+        earned_team:    aggBy(earns, a.id, e => e.source === 'team',  'amount_cents'),
+        earned_total:   aggBy(earns, a.id, null,                       'amount_cents'),
+        earned_available: aggBy(earns, a.id, e => e.status === 'available', 'amount_cents')
+      };
+    });
+
+    setList(enriched);
   }
+
+  // Filter + sort
+  const filtered = list.filter(a => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (a.profile?.full_name||'').toLowerCase().includes(q)
+      || (a.profile?.email||'').toLowerCase().includes(q)
+      || (a.promo_code||'').toLowerCase().includes(q)
+      || (a.recruiter_name||'').toLowerCase().includes(q);
+  });
+  const sorted = [...filtered].sort((a,b) => {
+    const av = a[sortKey] ?? (sortKey==='name' ? (a.profile?.full_name||a.profile?.email||'') : 0);
+    const bv = b[sortKey] ?? (sortKey==='name' ? (b.profile?.full_name||b.profile?.email||'') : 0);
+    if (typeof av === 'string') return sortDir==='asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir==='asc' ? (av - bv) : (bv - av);
+  });
+
+  function setSort(key) {
+    if (sortKey === key) setSortDir(d => d==='asc'?'desc':'asc');
+    else { setSortKey(key); setSortDir('desc'); }
+  }
+  const arrow = (key) => sortKey===key ? (sortDir==='asc'?' ▲':' ▼') : '';
+
+  // Sume na vrhu
+  const totals = sorted.reduce((acc, a) => ({
+    sales: acc.sales + a.sales_count,
+    sales_vol: acc.sales_vol + a.sales_volume,
+    reels: acc.reels + a.reels_approved,
+    earned_total: acc.earned_total + a.earned_total,
+    earned_team: acc.earned_team + a.earned_team,
+    earned_available: acc.earned_available + a.earned_available
+  }), { sales:0, sales_vol:0, reels:0, earned_total:0, earned_team:0, earned_available:0 });
 
   return (
     <>
-      <div className="glass rounded-2xl p-3 sm:p-5 overflow-x-auto">
-        <table className="w-full text-sm min-w-[600px]">
-          <thead>
-            <tr className="text-left text-[10px] text-white/50 uppercase tracking-wider border-b border-white/10">
-              <th className="py-3 px-2">Atleta</th>
-              <th className="px-2">Nivo</th>
-              <th className="px-2">Rewardful</th>
-              <th className="px-2">Telefon</th>
-              <th className="px-2">Banka</th>
-              <th className="px-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map(a => (
-              <tr key={a.id} className="border-b border-white/5 hover:bg-white/5">
-                <td className="py-3 px-2">
-                  <div className="font-bold text-sm">{a.profiles?.full_name || '—'}</div>
-                  <div className="text-[11px] text-white/40">{a.profiles?.email}</div>
-                </td>
-                <td className="px-2">
-                  <span className="text-xs font-bold" style={{color: LEVEL_THEME[a.level].color}}>{LEVEL_THEME[a.level].name}</span>
-                  <div className="text-[10px] text-white/40">{a.current_xp || 0} BODOVA</div>
-                </td>
-                <td className="px-2 text-xs">
-                  {a.rewardful_token ? <span className="text-lime">✓</span> : <span className="text-gold">⚠</span>}
-                  {' '}<code className="text-white/60 text-[10px]">{a.rewardful_token || '—'}</code>
-                </td>
-                <td className="px-2 text-xs text-white/70">{a.bank_phone || '—'}</td>
-                <td className="px-2 text-xs">
-                  {a.bank_iban ? <span className="text-lime">✓ IBAN</span> : <span className="text-white/40">—</span>}
-                </td>
-                <td className="px-2">
-                  <button onClick={()=>setSelected(a)} className="px-3 py-1.5 rounded-lg bg-brand/15 text-brand text-xs font-bold">Detalji</button>
-                </td>
+      <div className="space-y-3">
+        {/* Search + brzi totali */}
+        <div className="glass rounded-2xl p-3 sm:p-4 space-y-3">
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="🔍 Pretrazi ime, email, promo kod ili recruiter-a..."
+            className="w-full px-4 py-2.5 rounded-xl bg-bg0 border border-white/15 focus:border-brand outline-none text-sm"/>
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
+            <div className="p-2 rounded-lg bg-bg0/40">
+              <div className="text-[9px] uppercase text-white/40 font-bold">Atleta</div>
+              <div className="font-display font-black text-base">{sorted.length}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-bg0/40">
+              <div className="text-[9px] uppercase text-white/40 font-bold">Prodaje</div>
+              <div className="font-display font-black text-base text-brand">{totals.sales}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-bg0/40">
+              <div className="text-[9px] uppercase text-white/40 font-bold">Promet</div>
+              <div className="font-display font-black text-base text-brand">{formatEUR(totals.sales_vol)}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-bg0/40">
+              <div className="text-[9px] uppercase text-white/40 font-bold">Reels OK</div>
+              <div className="font-display font-black text-base text-gold">{totals.reels}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-bg0/40">
+              <div className="text-[9px] uppercase text-white/40 font-bold">Tim €</div>
+              <div className="font-display font-black text-base text-lime">{formatEUR(totals.earned_team)}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-bg0/40">
+              <div className="text-[9px] uppercase text-white/40 font-bold">Ukupno €</div>
+              <div className="font-display font-black text-base text-lime">{formatEUR(totals.earned_total)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass rounded-2xl p-3 sm:p-5 overflow-x-auto">
+          <table className="w-full text-sm min-w-[1100px]">
+            <thead>
+              <tr className="text-left text-[10px] text-white/50 uppercase tracking-wider border-b border-white/10">
+                <th className="py-3 px-2 cursor-pointer hover:text-brand" onClick={()=>setSort('name')}>Atleta{arrow('name')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand" onClick={()=>setSort('level')}>Nivo{arrow('level')}</th>
+                <th className="px-2">Recruiter</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('reels_approved')}>Reels OK{arrow('reels_approved')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('sales_count')}>Prodaje{arrow('sales_count')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('sales_volume')}>Promet{arrow('sales_volume')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('earned_reels')}>€ Reels{arrow('earned_reels')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('earned_sales')}>€ Sales{arrow('earned_sales')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('earned_team')}>€ Tim{arrow('earned_team')}</th>
+                <th className="px-2 cursor-pointer hover:text-brand text-right" onClick={()=>setSort('earned_total')}>€ Ukupno{arrow('earned_total')}</th>
+                <th className="px-2"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map(a => (
+                <tr key={a.id} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="py-3 px-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
+                        {a.profile?.avatar_url
+                          ? <img src={a.profile.avatar_url} alt="" className="w-full h-full object-cover"/>
+                          : <div className="w-full h-full flex items-center justify-center text-xs">👤</div>}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-sm truncate">{a.profile?.full_name || a.name || '—'}</div>
+                        <div className="text-[10px] text-white/40 truncate">{a.profile?.email}</div>
+                        <code className="text-[10px] text-brand">{a.promo_code}</code>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-2">
+                    <span className="text-xs font-bold" style={{color: LEVEL_THEME[a.level]?.color}}>{LEVEL_THEME[a.level]?.emoji} {LEVEL_THEME[a.level]?.name}</span>
+                  </td>
+                  <td className="px-2 text-xs">
+                    {a.recruiter_name ? (
+                      <span className="text-white/70">👤 {a.recruiter_name}</span>
+                    ) : (
+                      <span className="text-white/30 text-[10px]">direktan</span>
+                    )}
+                  </td>
+                  <td className="px-2 text-right">
+                    <span className="font-bold text-gold">{a.reels_approved}</span>
+                    {a.reels_pending > 0 && <div className="text-[10px] text-gold/60">+{a.reels_pending} pending</div>}
+                  </td>
+                  <td className="px-2 text-right font-bold text-brand">{a.sales_count}</td>
+                  <td className="px-2 text-right text-brand text-xs">{formatEUR(a.sales_volume)}</td>
+                  <td className="px-2 text-right text-gold text-xs">{formatEUR(a.earned_reels)}</td>
+                  <td className="px-2 text-right text-brand text-xs">{formatEUR(a.earned_sales)}</td>
+                  <td className="px-2 text-right text-lime text-xs">{formatEUR(a.earned_team)}</td>
+                  <td className="px-2 text-right font-bold text-lime">{formatEUR(a.earned_total)}</td>
+                  <td className="px-2">
+                    <button onClick={()=>setSelected(a)} className="px-3 py-1.5 rounded-lg bg-brand/15 text-brand text-xs font-bold whitespace-nowrap">Detalji</button>
+                  </td>
+                </tr>
+              ))}
+              {sorted.length === 0 && (
+                <tr><td colSpan="11" className="text-center py-8 text-white/40 text-sm">Nema rezultata.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="text-[10px] text-white/40 text-center">
+          💡 Klikni na bilo koje zaglavlje da sortiraš ↑↓. Pretraga radi po imenu, email-u, promo kodu ili recruiter-u.
+        </div>
       </div>
 
       {selected && <AthleteDetailsModal athlete={selected} onClose={()=>setSelected(null)} onUpdate={load}/>}
