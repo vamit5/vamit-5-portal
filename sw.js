@@ -1,5 +1,6 @@
-// VAMIT-5 Portal Service Worker v3 — NOV LOGO
-const VERSION = 'vamit5-v3';
+// VAMIT-5 Portal Service Worker v5 — NOV LOGO + force update
+const VERSION = 'vamit5-v5';
+const LOGO_URL = 'https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_192,h_192,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -36,8 +37,9 @@ self.addEventListener('push', (e) => {
   const title = data.title || 'VAMIT-5';
   const options = {
     body: data.body || '',
-    icon: 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg',
-    badge: 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg',
+    icon: LOGO_URL,
+    badge: LOGO_URL,
+    image: LOGO_URL,
     data: { url: data.action_url || '/#/dashboard' },
     vibrate: [200, 100, 200],
     requireInteraction: data.priority === 'celebration'
