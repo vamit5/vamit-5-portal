@@ -732,12 +732,168 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
 }
 
 // === DASHBOARD ===
+// === TIM MEMBER DETAIL MODAL ===
+function TeamMemberDetailModal({ member, viewerAthleteId, onClose }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    setLoading(true);
+    const [salesRes, reelsRes, earnRes, teamCommRes] = await Promise.all([
+      // Njegove prodaje
+      supa.from('sales').select('id, amount_cents, product_name, status, created_at')
+        .eq('athlete_id', member.id).order('created_at', { ascending: false }).limit(50),
+      // Njegovi reels
+      supa.from('reels').select('id, status, submitted_at')
+        .eq('athlete_id', member.id).order('submitted_at', { ascending: false }).limit(60),
+      // Njegovi totali zarade (sve sources)
+      supa.from('earnings_ledger').select('amount_cents, status, source').eq('athlete_id', member.id),
+      // Koliko sam JA zaradio od njega
+      supa.from('earnings_ledger').select('amount_cents, status').eq('athlete_id', viewerAthleteId).eq('source','team')
+    ]);
+
+    const sales = salesRes.data || [];
+    const reels = reelsRes.data || [];
+    const earns = earnRes.data || [];
+    const myTeamFromHim = (teamCommRes.data || []);
+
+    // Filter "moja zarada od njega" — jer team table ne razdvaja po seller, koristim sales JOIN
+    let myEarningsFromHim = 0;
+    if (sales.length) {
+      const saleIds = sales.map(s => s.id);
+      const { data: myTeamRows } = await supa.from('earnings_ledger')
+        .select('amount_cents, status').eq('athlete_id', viewerAthleteId).eq('source','team').in('ref_id', saleIds);
+      myEarningsFromHim = (myTeamRows||[]).reduce((s,x)=>s+x.amount_cents, 0);
+    }
+
+    setStats({
+      sales,
+      reels,
+      sales_count: sales.length,
+      sales_confirmed: sales.filter(s => s.status === 'confirmed').length,
+      sales_total: sales.filter(s => s.status === 'confirmed').reduce((s,x)=>s+x.amount_cents, 0),
+      reels_count: reels.length,
+      reels_approved: reels.filter(r => r.status === 'approved').length,
+      his_earnings_lifetime: earns.reduce((s,x)=>s+x.amount_cents, 0),
+      his_earnings_available: earns.filter(e => e.status === 'available').reduce((s,x)=>s+x.amount_cents, 0),
+      my_earnings_from_him: myEarningsFromHim
+    });
+    setLoading(false);
+  }
+
+  const t = LEVEL_THEME[member.level] || LEVEL_THEME.recruit;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-bg1 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e=>e.stopPropagation()}>
+        <div className="sticky top-0 bg-bg1 border-b border-white/10 p-4 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
+              {member.profile?.avatar_url
+                ? <img src={member.profile.avatar_url} alt="" className="w-full h-full object-cover"/>
+                : <div className="w-full h-full flex items-center justify-center text-base">👤</div>}
+            </div>
+            <div className="min-w-0">
+              <div className="font-display font-black text-base truncate">{member.profile?.full_name || member.profile?.email?.split('@')[0] || member.name || 'Atleta'}</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider" style={{color:t.color}}>{t.emoji} {t.name} · u timu od {formatDate(member.joined_at)}</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-lg shrink-0 ml-2">✕</button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12 text-white/50">Učitavam...</div>
+        ) : !stats ? (
+          <div className="text-center py-12 text-white/50">Greška u učitavanju.</div>
+        ) : (
+          <div className="p-4 space-y-4">
+            {/* MOJA ZARADA OD NJEGA — najvazniji broj */}
+            <div className="glass-strong rounded-2xl p-4 border border-lime/40">
+              <div className="text-[10px] uppercase tracking-wider text-lime font-bold mb-1">💰 Tvoja zarada od ovog atlete</div>
+              <div className="font-display font-black text-3xl text-lime">{formatEUR(stats.my_earnings_from_him)}</div>
+              <div className="text-xs text-white/60 mt-1">Provizija od svake njegove prodaje (% zavisi od tvog nivoa)</div>
+            </div>
+
+            {/* NJEGOVE PRODAJE */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-bg0/60 border border-white/10">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Njegove prodaje</div>
+                <div className="font-display font-black text-xl text-brand">{stats.sales_confirmed}</div>
+                <div className="text-[10px] text-white/40">{formatEUR(stats.sales_total)} ukupno</div>
+              </div>
+              <div className="p-3 rounded-xl bg-bg0/60 border border-white/10">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Njegovi reels</div>
+                <div className="font-display font-black text-xl text-gold">{stats.reels_approved}</div>
+                <div className="text-[10px] text-white/40">odobreno</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-bg0/60 border border-white/10">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Njegova ukupna zarada</div>
+                <div className="font-display font-black text-base">{formatEUR(stats.his_earnings_lifetime)}</div>
+              </div>
+              <div className="p-3 rounded-xl bg-bg0/60 border border-white/10">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Njegovo dostupno</div>
+                <div className="font-display font-black text-base text-lime">{formatEUR(stats.his_earnings_available)}</div>
+              </div>
+            </div>
+
+            {/* LISTA PRODAJA */}
+            <div>
+              <div className="font-display font-bold text-sm mb-2">📦 Njegove prodaje ({stats.sales_confirmed})</div>
+              {stats.sales.length === 0 ? (
+                <div className="text-center py-4 text-xs text-white/50">Još nema prodaja.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {stats.sales.map(s => (
+                    <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs truncate">{s.product_name || 'VAMIT-5 paket'}</div>
+                        <div className="text-[10px] text-white/40">{formatDate(s.created_at)}</div>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <div className="font-display font-black text-sm text-brand">{formatEUR(s.amount_cents)}</div>
+                        <div className="text-[9px] uppercase font-bold" style={{color: s.status==='confirmed'?'#a6ff3b':'#ffc24b'}}>{s.status}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* LISTA REELS */}
+            <div>
+              <div className="font-display font-bold text-sm mb-2">🎬 Njegovi reels ({stats.reels_count})</div>
+              {stats.reels.length === 0 ? (
+                <div className="text-center py-4 text-xs text-white/50">Još nema reels-ova.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {stats.reels.slice(0, 15).map(r => (
+                    <div key={r.id} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5">
+                      <div className="text-xs text-white/60">{formatDate(r.submitted_at)}</div>
+                      <div className="text-[9px] uppercase font-bold" style={{color: r.status==='approved'?'#a6ff3b':r.status==='pending'?'#ffc24b':'#ff4d5e'}}>{r.status}</div>
+                    </div>
+                  ))}
+                  {stats.reels.length > 15 && <div className="text-[10px] text-white/40 text-center">...i još {stats.reels.length - 15}</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // === MOJ TIM ===
 function MyTeam({ athlete }) {
   const [members, setMembers] = useState([]);
   const [teamEarned, setTeamEarned] = useState({ total: 0, available: 0 });
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
 
   const inviteLink = athlete?.promo_code
     ? `${window.location.origin}/?ref=${athlete.promo_code}`
@@ -826,7 +982,8 @@ function MyTeam({ athlete }) {
           {members.map(m => {
             const t = LEVEL_THEME[m.level] || LEVEL_THEME.recruit;
             return (
-              <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
+              <button key={m.id} onClick={()=>setSelectedMember(m)}
+                className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-white/5 hover:bg-white/10 transition text-left group">
                 <div className="w-8 h-8 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
                   {m.profile?.avatar_url
                     ? <img src={m.profile.avatar_url} alt="" className="w-full h-full object-cover"/>
@@ -836,11 +993,22 @@ function MyTeam({ athlete }) {
                   <div className="font-bold text-sm truncate">{m.profile?.full_name || m.profile?.email?.split('@')[0] || '—'}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wider" style={{color:t.color}}>{t.emoji} {t.name}</div>
                 </div>
-                <div className="text-[10px] text-white/40">{formatDate(m.joined_at)}</div>
-              </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-white/40">{formatDate(m.joined_at)}</div>
+                  <div className="text-[10px] text-brand opacity-0 group-hover:opacity-100 transition">Detalji →</div>
+                </div>
+              </button>
             );
           })}
         </div>
+      )}
+
+      {selectedMember && (
+        <TeamMemberDetailModal
+          member={selectedMember}
+          viewerAthleteId={athlete.id}
+          onClose={()=>setSelectedMember(null)}
+        />
       )}
     </div>
   );
@@ -1576,26 +1744,164 @@ function KursPage({ athlete }) {
 }
 
 // === ISPLATE ===
+// === TIM PRODAJE DETALJI MODAL ===
+function TeamSalesDetailModal({ athleteId, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{ load(); }, []);
+  async function load() {
+    setLoading(true);
+    const { data: earns } = await supa.from('earnings_ledger')
+      .select('id, amount_cents, status, created_at, description, ref_id, payout_request_id')
+      .eq('athlete_id', athleteId).eq('source', 'team')
+      .order('created_at', { ascending: false }).limit(200);
+    const earnArr = earns || [];
+    if (earnArr.length === 0) { setItems([]); setLoading(false); return; }
+
+    const saleIds = earnArr.map(e => e.ref_id).filter(Boolean);
+    let salesMap = {};
+    if (saleIds.length) {
+      const { data: sales } = await supa.from('sales')
+        .select('id, athlete_id, amount_cents, product_name, created_at')
+        .in('id', saleIds);
+      salesMap = Object.fromEntries((sales||[]).map(s => [s.id, s]));
+    }
+
+    const sellerIds = [...new Set(Object.values(salesMap).map(s => s.athlete_id).filter(Boolean))];
+    let sellerMap = {};
+    if (sellerIds.length) {
+      const [aR, pR] = await Promise.all([
+        supa.from('athletes').select('id, level, name, promo_code').in('id', sellerIds),
+        supa.from('profiles').select('id, full_name, email, avatar_url').in('id', sellerIds)
+      ]);
+      const aMap = Object.fromEntries((aR.data||[]).map(a => [a.id, a]));
+      const pMap = Object.fromEntries((pR.data||[]).map(p => [p.id, p]));
+      sellerIds.forEach(id => { sellerMap[id] = { ...(aMap[id]||{}), ...(pMap[id]||{}) }; });
+    }
+
+    const rows = earnArr.map(e => {
+      const sale = salesMap[e.ref_id] || {};
+      const seller = sale.athlete_id ? (sellerMap[sale.athlete_id] || {}) : {};
+      return {
+        ...e,
+        sale,
+        seller,
+        seller_name: seller.full_name || seller.name || seller.email?.split('@')[0] || 'Atleta',
+        seller_level: seller.level || 'recruit'
+      };
+    });
+    setItems(rows);
+    setLoading(false);
+  }
+
+  const totalEarned = items.reduce((s,x)=>s+x.amount_cents, 0);
+  const totalSold = items.reduce((s,x)=>s+(x.sale?.amount_cents||0), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-bg1 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e=>e.stopPropagation()}>
+        <div className="sticky top-0 bg-bg1 border-b border-white/10 p-4 flex items-center justify-between z-10">
+          <div>
+            <div className="font-display font-black text-lg">👥 Tim prodaje — detalji</div>
+            <div className="text-xs text-white/50">Ko je šta prodao i koliko si ti zaradio</div>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-lg">✕</button>
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="p-3 rounded-xl bg-bg0/60 border border-white/10">
+              <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Tim ukupno prodao</div>
+              <div className="font-display font-black text-lg text-brand">{formatEUR(totalSold)}</div>
+            </div>
+            <div className="p-3 rounded-xl bg-bg0/60 border border-lime/30">
+              <div className="text-[10px] uppercase tracking-wider text-lime font-bold">Tvoja zarada</div>
+              <div className="font-display font-black text-lg text-lime">{formatEUR(totalEarned)}</div>
+            </div>
+          </div>
+          {loading ? (
+            <div className="text-center py-8 text-white/50">Učitavam...</div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-8 text-white/50 text-sm">Tim još nije imao prodaje.<br/><span className="text-white/40 text-xs">Kad neko iz tvog tima proda paket, vidiš detalje ovde.</span></div>
+          ) : (
+            <div className="space-y-2">
+              {items.map(it => {
+                const tt = LEVEL_THEME[it.seller_level] || LEVEL_THEME.recruit;
+                return (
+                  <div key={it.id} className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-bg0 border border-white/10 shrink-0">
+                          {it.seller?.avatar_url
+                            ? <img src={it.seller.avatar_url} alt="" className="w-full h-full object-cover"/>
+                            : <div className="w-full h-full flex items-center justify-center text-sm">👤</div>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-sm truncate">{it.seller_name}</div>
+                          <div className="text-[10px] font-bold uppercase tracking-wider" style={{color:tt.color}}>{tt.emoji} {tt.name}</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] uppercase font-black px-2 py-0.5 rounded shrink-0" style={{
+                        background: it.status==='paid'?'rgba(166,255,59,0.15)':it.status==='available'?'rgba(59,130,246,0.15)':'rgba(255,194,75,0.15)',
+                        color: it.status==='paid'?'#a6ff3b':it.status==='available'?'#3b82f6':'#ffc24b'
+                      }}>{EARNINGS_STATUS_SR[it.status]||it.status}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2 rounded-lg bg-bg0/40">
+                        <div className="text-[9px] uppercase text-white/40 font-bold">Prodao</div>
+                        <div className="font-bold truncate">{it.sale?.product_name || 'VAMIT-5 paket'}</div>
+                        <div className="text-[10px] text-white/50">{formatEUR(it.sale?.amount_cents||0)}</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-lime/5 border border-lime/20">
+                        <div className="text-[9px] uppercase text-lime/80 font-bold">Tvoja zarada</div>
+                        <div className="font-display font-black text-base text-lime">{formatEUR(it.amount_cents)}</div>
+                        <div className="text-[10px] text-white/40">{formatDate(it.created_at)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IsplatePage({ athlete, profile, refreshProfile }) {
-  const [wallet, setWallet] = useState({ reels_balance: 0, sales_balance: 0 });
+  const [wallet, setWallet] = useState({ reels_balance: 0, sales_balance: 0, team_balance: 0 });
   const [history, setHistory] = useState([]);
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const [reelsAmt, setReelsAmt] = useState('');
   const [salesAmt, setSalesAmt] = useState('');
+  const [teamAmt, setTeamAmt] = useState('');
   const [period30, setPeriod30] = useState({ sales: 0, reels: 0 });
+  const [showTeamDetails, setShowTeamDetails] = useState(false);
 
   useEffect(()=>{ if (athlete) load(); }, [athlete?.id]);
   async function load() {
     const monthAgo = new Date(); monthAgo.setDate(monthAgo.getDate() - 30);
-    const [w, pr, pp, sc, rc] = await Promise.all([
-      supa.from('athlete_wallet_split').select('*').eq('athlete_id', athlete.id).maybeSingle(),
+    const [allEarns, pr, pp, sc, rc] = await Promise.all([
+      supa.from('earnings_ledger').select('amount_cents, status, payout_request_id, source').eq('athlete_id', athlete.id),
       supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).order('requested_at',{ascending:false}).limit(20),
       supa.from('payout_requests').select('*').eq('athlete_id', athlete.id).eq('status','pending').maybeSingle(),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed').gte('created_at', monthAgo.toISOString()),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthAgo.toISOString())
     ]);
-    setWallet(w.data || { reels_balance: 0, sales_balance: 0 });
+    const earns = allEarns.data || [];
+    const payoutsAll = pr.data || [];
+    function balanceFor(sources) {
+      const earned = earns.filter(e => sources.includes(e.source) && e.status === 'available').reduce((s,x)=>s+x.amount_cents,0);
+      const usedUp = payoutsAll.filter(p => sources.includes(p.payout_source) && ['pending','approved','paid'].includes(p.status)).reduce((s,x)=>s+x.amount_cents,0);
+      return Math.max(0, earned - usedUp);
+    }
+    setWallet({
+      reels_balance: balanceFor(['reel']),
+      sales_balance: balanceFor(['sale']),
+      team_balance:  balanceFor(['team'])
+    });
     setHistory(pr.data || []);
     setPending(pp.data);
     setPeriod30({ sales: sc.count || 0, reels: rc.count || 0 });
@@ -1621,13 +1927,14 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
       return;
     }
 
-    const amtStr = source === 'reels' ? reelsAmt : salesAmt;
-    const balance = source === 'reels' ? wallet.reels_balance : wallet.sales_balance;
+    const amtStr = source === 'reels' ? reelsAmt : source === 'team' ? teamAmt : salesAmt;
+    const balance = source === 'reels' ? wallet.reels_balance : source === 'team' ? wallet.team_balance : wallet.sales_balance;
+    const sourceLabel = source === 'reels' ? 'Reels' : source === 'team' ? 'Tim' : 'Prodaja';
     const reqEur = parseFloat((amtStr||'').replace(',','.'));
     const reqCents = (amtStr && !isNaN(reqEur) && reqEur > 0) ? Math.round(reqEur * 100) : balance;
 
     if (reqCents <= 0) { setMsg({type:'err', text:'Unesi pozitivan iznos.'}); return; }
-    if (reqCents > balance) { setMsg({type:'err', text:'Iznos veći od dostupnog u '+(source==='reels'?'Reels':'Prodaja')+': '+formatEUR(balance)}); return; }
+    if (reqCents > balance) { setMsg({type:'err', text:'Iznos veći od dostupnog u '+sourceLabel+': '+formatEUR(balance)}); return; }
     if (reqCents < minPayoutCents) {
       const minLabel = isRecruit ? 'bilo koji iznos' : '€'+(minPayoutCents/100).toFixed(2);
       setMsg({type:'err', text:'Minimum za isplatu je ' + minLabel + '.'});
@@ -1645,7 +1952,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
     if (error) setMsg({type:'err', text: error.message});
     else {
       setMsg({type:'ok', text:'Zahtev za '+formatEUR(reqCents)+' poslat! Admin obrađuje.'});
-      if (source==='reels') setReelsAmt(''); else setSalesAmt('');
+      if (source==='reels') setReelsAmt(''); else if (source==='team') setTeamAmt(''); else setSalesAmt('');
       load();
     }
   }
@@ -1661,7 +1968,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
 
       {pending && (
         <div className="glass rounded-2xl p-4 border border-gold/30 text-sm text-gold">
-          ⏳ Imaš zahtev za isplatu od {formatEUR(pending.amount_cents)} ({pending.payout_source==='reels'?'Reels':pending.payout_source==='sales'?'Prodaje':'Mešano'}). Admin obrađuje.
+          ⏳ Imaš zahtev za isplatu od {formatEUR(pending.amount_cents)} ({pending.payout_source==='reels'?'Reels':pending.payout_source==='team'?'Tim':pending.payout_source==='sales'?'Prodaje':'Mešano'}). Admin obrađuje.
         </div>
       )}
 
@@ -1733,6 +2040,48 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
           </div>
         )}
       </div>
+
+      {/* === TEAM BUCKET — uvek dostupan === */}
+      <div className="glass-strong rounded-3xl p-5 sm:p-6 border border-lime/30">
+        <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1">👥 Tim provizija</div>
+            <div className="font-display text-3xl sm:text-4xl font-black text-lime">
+              {formatEUR(wallet.team_balance)}
+            </div>
+            <div className="text-[10px] text-white/50 mt-1">
+              {Math.round(((athlete?.level==='elite'?0.25:athlete?.level==='commando'?0.20:0.15))*100)}% od svake prodaje tvog tima
+            </div>
+          </div>
+          <button onClick={()=>setShowTeamDetails(true)}
+            className="px-3 py-1.5 rounded-lg bg-lime/15 border border-lime/40 text-[10px] font-black text-lime uppercase tracking-wider hover:bg-lime/25 transition">
+            📊 Detalji
+          </button>
+        </div>
+
+        {wallet.team_balance > 0 && !pending && (
+          <div className="space-y-2 mt-3">
+            <div className="flex items-center gap-2">
+              <input type="text" inputMode="decimal" value={teamAmt} onChange={e=>setTeamAmt(e.target.value)}
+                placeholder={`Iznos € (max ${(wallet.team_balance/100).toFixed(2)})`}
+                className="flex-1 px-4 py-3 rounded-xl bg-bg0 border border-white/15 focus:border-lime outline-none text-sm text-center font-bold"/>
+              <button type="button" onClick={()=>setTeamAmt((wallet.team_balance/100).toFixed(2))}
+                className="px-3 py-3 rounded-xl bg-white/5 text-xs text-white/70 whitespace-nowrap">Sve</button>
+            </div>
+            <button onClick={()=>requestPayout('team')} disabled={wallet.team_balance < minPayoutCents}
+              className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand2 disabled:opacity-50 text-sm">
+              {teamAmt ? `📤 Zatraži €${parseFloat(teamAmt).toFixed(2)} (Tim)` : '📤 Zatraži ceo Tim iznos'}
+            </button>
+          </div>
+        )}
+        {wallet.team_balance === 0 && (
+          <div className="mt-3 p-3 rounded-xl bg-bg0/40 text-xs text-white/50 text-center">
+            Nema još tim zarade. Kad neko iz tvog tima proda, dobićeš proviziju ovde.
+          </div>
+        )}
+      </div>
+
+      {showTeamDetails && <TeamSalesDetailModal athleteId={athlete.id} onClose={()=>setShowTeamDetails(false)}/>}
 
       {msg && (
         <div className={"text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>{msg.text}</div>
@@ -2443,6 +2792,11 @@ function AdminPayoutQueue() {
             <div>
               <div className="font-bold">{p.profiles?.full_name || p.profiles?.email}</div>
               <div className="text-2xl font-display font-black text-lime">{formatEUR(p.amount_cents)}</div>
+              <div className="text-[10px] uppercase tracking-wider font-bold mt-0.5" style={{
+                color: p.payout_source==='reels' ? '#a6ff3b' : p.payout_source==='team' ? '#00f0ff' : '#ff3bcc'
+              }}>
+                {p.payout_source==='reels' ? '🎬 Reels bucket' : p.payout_source==='team' ? '👥 Tim bucket' : p.payout_source==='sales' ? '💎 Prodaja bucket' : 'Mešano'}
+              </div>
             </div>
             <div className="text-[11px] text-white/40">{fromNow(p.requested_at)}</div>
           </div>
