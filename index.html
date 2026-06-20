@@ -98,12 +98,20 @@ const LEVEL_THEME = {
   elite:    { color:'#ffc24b', name:'ELITE',   emoji:'👑', glow:'glow-elite' }
 };
 
-// Level zahtevi za reels u periodu
+// Level zahtevi za reels + prodaje u periodu
 const LEVEL_TARGETS = {
-  recruit:  { reels: 60,  days: 60, per_day: 1, next: 'pro',      label: 'REGRUT' },
-  pro:      { reels: 60,  days: 30, per_day: 2, next: 'commando', label: 'PRO' },
-  commando: { reels: 90,  days: 30, per_day: 3, next: 'elite',    label: 'COMMANDO' },
-  elite:    { reels: 120, days: 30, per_day: 4, next: null,       label: 'ELITE' }
+  recruit:  { reels: 60,  sales: 5,  days: 60, per_day: 1, next: 'pro',      label: 'REGRUT' },
+  pro:      { reels: 60,  sales: 10, days: 30, per_day: 2, next: 'commando', label: 'PRO' },
+  commando: { reels: 90,  sales: 20, days: 30, per_day: 3, next: 'elite',    label: 'COMMANDO' },
+  elite:    { reels: 120, sales: 30, days: 30, per_day: 4, next: null,       label: 'ELITE' }
+};
+
+// Srpski prevodi za status earnings
+const EARNINGS_STATUS_SR = {
+  pending:   'Na čekanju',
+  available: 'Dostupno',
+  paid:      'Isplaćeno',
+  cancelled: 'Otkazano'
 };
 
 // Min payout u centima — REGRUT moze bilo koliko, ostali min €10
@@ -624,19 +632,24 @@ function Dashboard({ athlete, profile }) {
   const monthlyReq = levelCfg?.monthly_threshold_json || {};
   const introActive = athlete.recruit_intro_period_until && new Date(athlete.recruit_intro_period_until) > new Date();
 
-  // === LEVEL PROGRESS — koliko dana u ovom nivou + koliko reels-ova ===
+  // === LEVEL PROGRESS — koliko dana u ovom nivou + koliko reels-ova + prodaja ===
   const levelStartedAt = athlete.level_started_at || athlete.joined_at;
   const target = LEVEL_TARGETS[athlete.level] || LEVEL_TARGETS.recruit;
   const daysSinceLevelStart = levelStartedAt
     ? Math.floor((Date.now() - new Date(levelStartedAt).getTime()) / 86400000)
     : 0;
   const daysRemaining = Math.max(0, target.days - daysSinceLevelStart);
-  // Broj odobrenih reels-ova OD KAD je atleta na trenutnom nivou
-  const reelsInPeriod = stats.reels_total; // priblizno; pravo bi bilo posebno query
+  const reelsInPeriod = stats.reels_total;
   const reelsTarget = target.reels;
   const reelsRemaining = Math.max(0, reelsTarget - reelsInPeriod);
   const reelsPct = Math.min(100, Math.round((reelsInPeriod / reelsTarget) * 100));
+  const salesInPeriod = stats.sales_total;
+  const salesTarget = (levelCfg?.requirements_json?.sales_total) || target.sales;
+  const salesRemaining = Math.max(0, salesTarget - salesInPeriod);
+  const salesPct = Math.min(100, Math.round((salesInPeriod / salesTarget) * 100));
   const daysPct = Math.min(100, Math.round((daysSinceLevelStart / target.days) * 100));
+  const commissionPct = Math.round((levelCfg?.sales_commission_pct || 0.35) * 100);
+  const reelReward = ((levelCfg?.reel_reward_cents || 30) / 100).toFixed(2);
 
   return (
     <div className="space-y-6">
@@ -659,57 +672,71 @@ function Dashboard({ athlete, profile }) {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-white/50">XP</div>
+            <div className="text-[10px] uppercase tracking-wider text-white/50">BODOVA</div>
             <div className="font-black text-xl" style={{color:theme.color}}>{athlete.current_xp || 0}</div>
           </div>
         </div>
 
-        {/* === LEVEL PROGRESS CARD (jasan, glavni) === */}
-        <div className="space-y-4 mt-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="text-xs uppercase tracking-wider text-white/60 font-bold">
-              {target.next ? `Tvoj cilj — napreduj na ${LEVEL_THEME[target.next].name}` : 'Top tier — održavaj ritam'}
+        {/* === LEVEL PROGRESS CARD (Reels, Sales, Days) === */}
+        <div className="space-y-3 mt-4">
+          <div className="text-xs uppercase tracking-wider text-white/60 font-bold">
+            {target.next ? `Tvoj cilj — napreduj na ${LEVEL_THEME[target.next].name}` : 'Top tier — održavaj ritam'}
+          </div>
+
+          {/* Reels bar */}
+          <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
+            <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">🎬 Reels</div>
+                <div className="font-display font-black text-xl">
+                  <span style={{color:theme.color}}>{reelsInPeriod}</span>
+                  <span className="text-white/30 text-sm"> / {reelsTarget}</span>
+                </div>
+              </div>
+              <div className="text-[11px] font-bold" style={{color: theme.color}}>€{reelReward} po reel-u</div>
             </div>
-            <div className="text-[10px] text-white/40">
-              Pravilo: <b style={{color:theme.color}}>{target.reels} reels-ova za {target.days} dana</b> ({target.per_day}/dan)
+            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: reelsPct+'%', background: theme.color }}/>
+            </div>
+            <div className="text-[11px] text-white/50 mt-1.5">
+              {reelsRemaining > 0 ? `Ostalo još ${reelsRemaining} reels-ova` : '✓ Ispunio cilj reels-ova!'}
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            {/* Reels progress */}
-            <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
-              <div className="flex items-baseline justify-between mb-2">
-                <div className="font-display font-black text-2xl">
-                  <span style={{color:theme.color}}>{reelsInPeriod}</span>
-                  <span className="text-white/30 text-base"> / {reelsTarget}</span>
+          {/* Sales bar */}
+          <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
+            <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">💎 Prodaje</div>
+                <div className="font-display font-black text-xl">
+                  <span className="text-brand">{salesInPeriod}</span>
+                  <span className="text-white/30 text-sm"> / {salesTarget}</span>
                 </div>
-                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">🎬 Reels</div>
               </div>
-              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: reelsPct+'%', background: theme.color }}/>
-              </div>
-              <div className="text-[11px] text-white/50 mt-1.5">
-                {reelsRemaining > 0
-                  ? `Ostalo još ${reelsRemaining} reels-ova`
-                  : '✓ Ispunio cilj!'}
-              </div>
+              <div className="text-[11px] font-bold text-brand">{commissionPct}% provizija</div>
             </div>
+            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-full rounded-full bg-brand transition-all" style={{ width: salesPct+'%' }}/>
+            </div>
+            <div className="text-[11px] text-white/50 mt-1.5">
+              {salesRemaining > 0 ? `Ostalo još ${salesRemaining} prodaja` : '✓ Ispunio cilj prodaja!'}
+            </div>
+          </div>
 
-            {/* Days progress */}
-            <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
-              <div className="flex items-baseline justify-between mb-2">
-                <div className="font-display font-black text-2xl">
-                  <span className="text-gold">{daysRemaining}</span>
-                  <span className="text-white/30 text-base"> dana</span>
-                </div>
+          {/* Days bar */}
+          <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
+            <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+              <div className="flex items-baseline gap-2">
                 <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">⏱️ Vreme</div>
+                <div className="font-display font-black text-xl">
+                  <span className="text-gold">{daysRemaining}</span>
+                  <span className="text-white/30 text-sm"> dana ostalo</span>
+                </div>
               </div>
-              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                <div className="h-full rounded-full bg-gold transition-all" style={{ width: daysPct+'%' }}/>
-              </div>
-              <div className="text-[11px] text-white/50 mt-1.5">
-                Prošlo {daysSinceLevelStart} od {target.days} dana
-              </div>
+              <div className="text-[11px] text-white/40">Dan {daysSinceLevelStart} / {target.days}</div>
+            </div>
+            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-full rounded-full bg-gold transition-all" style={{ width: daysPct+'%' }}/>
             </div>
           </div>
 
@@ -722,16 +749,15 @@ function Dashboard({ athlete, profile }) {
       </div>
 
       {/* EARNINGS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard label="Available" value={formatEUR(stats.earnings_available)} accent="lime" emoji="💰"/>
-        <StatCard label="Pending" value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
-        <StatCard label="Lifetime" value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
-        <StatCard label="Streak" value={stats.streak + 'd'} accent="brand3" emoji="🔥"/>
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <StatCard label="Dostupno" value={formatEUR(stats.earnings_available)} accent="lime" emoji="💰"/>
+        <StatCard label="Na čekanju" value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
+        <StatCard label="Ukupna zarada" value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
       </div>
 
       {/* QUICK ACTIONS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <QuickAction href="#/reels" emoji="🎬" label="Submit Reel" color={theme.color}/>
+        <QuickAction href="#/reels" emoji="🎬" label="Dodaj Reel" color={theme.color}/>
         <QuickAction href="#/kurs" emoji="📚" label="Otvori Kurs" color="#00f0ff"/>
         <QuickAction href="#/dostignuca" emoji="🏆" label="Dostignuća" color="#ffc24b"/>
         <QuickAction href="#/rang" emoji="📊" label="Rang Lista" color="#a855f7"/>
@@ -739,10 +765,10 @@ function Dashboard({ athlete, profile }) {
 
       {/* OVERVIEW STATS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MiniStat label="Reels (total)" value={stats.reels_total} sub={stats.reels_pending + ' pending'} />
+        <MiniStat label="BODOVI" value={athlete?.current_xp || 0} sub="ukupno" />
+        <MiniStat label="Reels (ukupno)" value={stats.reels_total} sub={stats.reels_pending + ' na čekanju'} />
         <MiniStat label="Reels (mesec)" value={stats.reels_month} sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)} />
-        <MiniStat label="Prodaje (total)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
-        <MiniStat label="Rewardful" value={athlete.rewardful_token ? '✓ Povezan' : '⚠ Nije'} sub={athlete.rewardful_token ? 'Aktivan' : 'Podesi u Profilu'}/>
+        <MiniStat label="Prodaje (ukupno)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
       </div>
 
       {/* ACTIVITY */}
@@ -793,7 +819,7 @@ async function runAchievementEngine(athleteId, snapshot) {
       const { error } = await supa.from('athlete_achievements').insert({ athlete_id: athleteId, achievement_id: ach.id, unlocked_at: new Date().toISOString() });
       if (!error) {
         newlyUnlocked.push(ach);
-        // XP nagrada
+        // BODOVA nagrada
         if (ach.xp_reward) {
           await supa.from('xp_ledger').insert({ athlete_id: athleteId, amount: ach.xp_reward, source: 'achievement', description: 'Dostignuće: ' + ach.name });
         }
@@ -827,7 +853,7 @@ function AchievementUnlockModal({ ach, onClose }) {
         <div className="text-7xl my-4">{ach.icon_emoji || ach.icon || '🏆'}</div>
         <h2 className="font-display font-black text-2xl text-gold mb-2">{ach.name}</h2>
         <p className="text-sm text-white/70 mb-4">{ach.description}</p>
-        {ach.xp_reward && <div className="text-base font-black text-brand mb-5">+{ach.xp_reward} XP</div>}
+        {ach.xp_reward && <div className="text-base font-black text-brand mb-5">+{ach.xp_reward} BODOVA</div>}
         <button onClick={onClose} className="w-full py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-gold via-brand3 to-brand">Slavim! 🔥</button>
       </div>
     </div>
@@ -944,7 +970,7 @@ function ReelsPage({ athlete, profile }) {
       </div>
 
       <div className="glass-strong rounded-2xl p-5 sm:p-6">
-        <div className="font-display font-bold text-lg mb-4">Submit novi Reel</div>
+        <div className="font-display font-bold text-lg mb-4">Dodaj novi Reel</div>
         <form onSubmit={submit} className="space-y-3">
           <input type="url" required value={url} onChange={e=>setUrl(e.target.value)}
             placeholder="https://www.instagram.com/reel/..."
@@ -958,7 +984,7 @@ function ReelsPage({ athlete, profile }) {
           )}
           <button type="submit" disabled={submitting||!url}
             className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
-            {submitting ? 'Šaljem...' : 'Submit Reel'}
+            {submitting ? 'Šaljem...' : 'Dodaj Reel'}
           </button>
         </form>
         <div className="mt-4 pt-4 border-t border-white/10 text-xs text-white/50 space-y-1">
@@ -1077,6 +1103,13 @@ function KursPage({ athlete }) {
       athlete_id: athlete.id, lesson_id: lessonId, completed_at: new Date().toISOString()
     }, { onConflict: 'athlete_id,lesson_id' });
     setProgress(p => ({ ...p, [lessonId]: true }));
+  }
+
+  async function markIncomplete(lessonId) {
+    if (!athlete?.id) return;
+    await supa.from('lesson_progress').delete()
+      .eq('athlete_id', athlete.id).eq('lesson_id', lessonId);
+    setProgress(p => { const n = {...p}; delete n[lessonId]; return n; });
   }
 
   const levelOrder = { recruit:0, pro:1, commando:2, elite:3 };
@@ -1213,14 +1246,19 @@ function KursPage({ athlete }) {
               )}
             </div>
           </div>
-          {!progress[openLesson.id] && (
-            <div className="p-4 max-w-5xl mx-auto w-full" onClick={e=>e.stopPropagation()}>
+          <div className="p-4 max-w-5xl mx-auto w-full" onClick={e=>e.stopPropagation()}>
+            {!progress[openLesson.id] ? (
               <button onClick={()=>{markComplete(openLesson.id); setOpenLesson(null);}}
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-lime to-brand text-bg0 font-bold text-sm">
                 ✓ Označi kao završeno
               </button>
-            </div>
-          )}
+            ) : (
+              <button onClick={()=>{markIncomplete(openLesson.id); setOpenLesson(null);}}
+                className="w-full py-3 rounded-xl bg-white/5 border border-white/15 text-white/80 font-bold text-sm">
+                ↻ Vrati na nezavršeno
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1233,6 +1271,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
   const [history, setHistory] = useState([]);
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
+  const [customAmount, setCustomAmount] = useState(''); // user-entered EUR
 
   useEffect(()=>{ if (athlete) load(); }, [athlete?.id]);
   async function load() {
@@ -1254,24 +1293,29 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
       setMsg({type:'err', text:'Prvo unesi bank info u Profilu.'});
       return;
     }
-    if (available < minPayoutCents) {
+    if (pending) {
+      setMsg({type:'err', text:'Već imaš zahtev koji čeka obradu.'});
+      return;
+    }
+    // Iznos: ako je user uneo custom, koristi to; inače cela suma
+    const reqEur = parseFloat((customAmount||'').replace(',','.'));
+    const reqCents = (customAmount && !isNaN(reqEur) && reqEur > 0) ? Math.round(reqEur * 100) : available;
+    if (reqCents <= 0) { setMsg({type:'err', text:'Unesi pozitivan iznos.'}); return; }
+    if (reqCents > available) { setMsg({type:'err', text:'Iznos veći od dostupnog: '+formatEUR(available)}); return; }
+    if (reqCents < minPayoutCents) {
       const minLabel = isRecruit ? 'bilo koji iznos' : '€'+(minPayoutCents/100).toFixed(2);
       setMsg({type:'err', text:'Minimum za isplatu je ' + minLabel + '.'});
       return;
     }
-    if (pending) {
-      setMsg({type:'err', text:'Već imaš pending zahtev.'});
-      return;
-    }
     const { error } = await supa.from('payout_requests').insert({
-      athlete_id: athlete.id, amount_cents: available,
+      athlete_id: athlete.id, amount_cents: reqCents,
       bank_info_snapshot: {
         full_name: athlete.bank_full_name, iban: athlete.bank_iban,
         bank: athlete.bank_name, phone: athlete.bank_phone
       }
     });
     if (error) setMsg({type:'err', text: error.message});
-    else { setMsg({type:'ok', text:'Zahtev poslat! Admin obraduje uskoro.'}); load(); }
+    else { setMsg({type:'ok', text:'Zahtev poslat! Admin obraduje uskoro.'}); setCustomAmount(''); load(); }
   }
 
   const sColor = { pending:'#ffc24b', approved:'#3b82f6', paid:'#a6ff3b', rejected:'#ff4d5e' };
@@ -1287,17 +1331,33 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
         <div className="text-xs uppercase tracking-[0.2em] text-white/60 mb-2 font-bold">Dostupno za isplatu</div>
         <div className="font-display text-5xl sm:text-6xl font-black text-lime mb-4">{formatEUR(available)}</div>
         {pending ? (
-          <div className="text-sm text-gold">⏳ Već imaš pending zahtev za {formatEUR(pending.amount_cents)}. Admin obrađuje.</div>
+          <div className="text-sm text-gold">⏳ Imaš zahtev koji čeka obradu za {formatEUR(pending.amount_cents)}. Admin obrađuje.</div>
         ) : (
-          <button onClick={requestPayout} disabled={available<minPayoutCents}
-            className="px-8 py-3.5 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50">
-            {isRecruit ? '📤 Zatraži isplatu sada (bilo koji iznos)' : `📤 Zatraži isplatu (min €${(minPayoutCents/100).toFixed(0)})`}
-          </button>
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={customAmount}
+                onChange={e=>setCustomAmount(e.target.value)}
+                placeholder={`Iznos u € (max ${(available/100).toFixed(2)})`}
+                className="flex-1 px-4 py-3 rounded-xl bg-bg0 border border-white/15 focus:border-brand outline-none text-sm text-center font-bold"
+              />
+              <button type="button" onClick={()=>setCustomAmount((available/100).toFixed(2))}
+                className="px-3 py-3 rounded-xl bg-white/5 text-xs text-white/70 whitespace-nowrap">Sve</button>
+            </div>
+            <button onClick={requestPayout} disabled={available<minPayoutCents}
+              className="w-full px-8 py-3.5 rounded-2xl font-extrabold text-bg0 bg-gradient-to-r from-lime to-brand disabled:opacity-50">
+              {customAmount ? `📤 Zatraži €${parseFloat(customAmount).toFixed(2)}` : '📤 Zatraži ceo iznos'}
+            </button>
+          </div>
         )}
         {msg && (
           <div className={"mt-4 text-xs " + (msg.type==='ok' ? 'text-lime' : 'text-danger')}>{msg.text}</div>
         )}
-        <div className="mt-3 text-xs text-white/50">Minimum: €10 · Stiže za 24-48h posle approve-a</div>
+        <div className="mt-3 text-xs text-white/50">
+          {isRecruit ? 'REGRUT: bilo koji iznos' : 'Minimum: €10'} · Stiže za 12-24h nakon provere
+        </div>
       </div>
 
       <div className="glass rounded-2xl p-5 sm:p-6">
@@ -1392,21 +1452,21 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
           <div className="text-xs text-white/60 mt-1">Link koji deliš sa pratiocima — kad neko kupi preko njega, ti zaradiš.</div>
         </div>
         {hasLink ? (
-          <>
-            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
-              <code className="text-xs sm:text-sm text-brand flex-1 break-all">{currentLink}</code>
-              <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
-                {copied ? '✓ Kopirano' : '📋 Kopiraj'}
-              </button>
-            </div>
-            <div className="text-[11px] text-lime mt-2">✓ Link je automatski sinhronizovan sa Rewardful nalogom.</div>
-          </>
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
+            <code className="text-xs sm:text-sm text-brand flex-1 break-all">{currentLink}</code>
+            <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
+              {copied ? '✓ Kopirano' : '📋 Kopiraj'}
+            </button>
+          </div>
         ) : (
-          <div className="p-4 rounded-xl bg-gold/10 border border-gold/30 text-sm">
-            ⏳ Link se sinhronizuje sa Rewardfulom. Osveži stranicu za 30 sekundi.
+          <div className="p-4 rounded-xl bg-bg0 border border-white/10 text-sm text-white/60">
+            Link će biti dostupan čim ga sinhronizujemo.
           </div>
         )}
       </div>
+
+      {/* PROFILE PICTURE UPLOAD */}
+      <AvatarUpload profile={profile} refreshProfile={refreshProfile}/>
 
       <form onSubmit={save} className="space-y-5">
         <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4">
@@ -1614,6 +1674,63 @@ function Field({label, children}) {
     <div>
       <label className="block text-[10px] uppercase tracking-wider text-white/60 font-bold mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+// =====================================================
+// === AVATAR UPLOAD ===
+// =====================================================
+function AvatarUpload({ profile, refreshProfile }) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState(null);
+  const fileRef = useRef(null);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5*1024*1024) { setErr('Slika je veća od 5MB'); return; }
+    setErr(null);
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop().toLowerCase();
+      const path = `${profile.id}/avatar.${ext}`;
+      // Upload (upsert: true)
+      const { error: upErr } = await supa.storage.from('avatars').upload(path, file, { upsert: true, cacheControl: '60' });
+      if (upErr) throw upErr;
+      // Public URL
+      const { data: pub } = supa.storage.from('avatars').getPublicUrl(path);
+      const url = pub.publicUrl + '?t=' + Date.now(); // bust cache
+      // Update profile
+      const { error: profErr } = await supa.from('profiles').update({ avatar_url: url }).eq('id', profile.id);
+      if (profErr) throw profErr;
+      if (refreshProfile) await refreshProfile(profile.id);
+    } catch(e) {
+      console.error(e); setErr(e.message || 'Greška pri uploadu');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="glass-strong rounded-2xl p-5 sm:p-6 flex items-center gap-4">
+      <div className="w-20 h-20 rounded-full overflow-hidden bg-bg1 border-2 border-brand/30 shrink-0">
+        {profile?.avatar_url ? (
+          <img src={profile.avatar_url} alt="" className="w-full h-full object-cover"/>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-display font-bold text-base">Profilna slika</div>
+        <div className="text-[11px] text-white/60 mb-2">JPG, PNG ili WebP, max 5MB. Druge atlete je vide u rang listi.</div>
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleFile} className="hidden"/>
+        <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading}
+          className="px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold disabled:opacity-50">
+          {uploading ? 'Uploadujem...' : profile?.avatar_url ? 'Promeni sliku' : 'Postavi sliku'}
+        </button>
+        {err && <div className="text-[11px] text-danger mt-1">{err}</div>}
+      </div>
     </div>
   );
 }
@@ -1999,7 +2116,7 @@ function AdminAthletes() {
                 </td>
                 <td className="px-2">
                   <span className="text-xs font-bold" style={{color: LEVEL_THEME[a.level].color}}>{LEVEL_THEME[a.level].name}</span>
-                  <div className="text-[10px] text-white/40">{a.current_xp || 0} XP</div>
+                  <div className="text-[10px] text-white/40">{a.current_xp || 0} BODOVA</div>
                 </td>
                 <td className="px-2 text-xs">
                   {a.rewardful_token ? <span className="text-lime">✓</span> : <span className="text-gold">⚠</span>}
@@ -2130,7 +2247,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
           <div className="glass rounded-xl p-3">
             <div className="text-[9px] uppercase tracking-wider text-white/50">Nivo</div>
             <div className="font-black text-sm" style={{color: theme.color}}>{theme.emoji} {theme.name}</div>
-            <div className="text-[10px] text-white/40">{athlete.current_xp || 0} XP</div>
+            <div className="text-[10px] text-white/40">{athlete.current_xp || 0} BODOVA</div>
           </div>
           <div className="glass rounded-xl p-3">
             <div className="text-[9px] uppercase tracking-wider text-white/50">Reels</div>
@@ -2331,7 +2448,7 @@ function AchievementsPage({ athlete }) {
   }
 
   const unlockedCount = Object.keys(unlocked).length;
-  const totalXP = achievements.filter(a => unlocked[a.id]).reduce((s,a)=>s+(a.xp_reward||0), 0);
+  const totalBODOVA = achievements.filter(a => unlocked[a.id]).reduce((s,a)=>s+(a.xp_reward||0), 0);
 
   const filtered = achievements.filter(a => {
     if (filter === 'unlocked') return unlocked[a.id];
@@ -2354,7 +2471,7 @@ function AchievementsPage({ athlete }) {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🏆 Dostignuća</h1>
-        <p className="text-sm text-white/60">Otključavaj badge-ove kroz akciju. Svako dostignuće = XP nagrada.</p>
+        <p className="text-sm text-white/60">Otključavaj badge-ove kroz akciju. Svako dostignuće = BODOVA nagrada.</p>
       </div>
 
       {/* SUMMARY */}
@@ -2364,8 +2481,8 @@ function AchievementsPage({ athlete }) {
           <div className="font-display font-black text-2xl text-gold">{unlockedCount}/{achievements.length}</div>
         </div>
         <div className="glass-strong rounded-2xl p-4 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-white/50">XP iz dostignuća</div>
-          <div className="font-display font-black text-2xl text-brand">{totalXP}</div>
+          <div className="text-[10px] uppercase tracking-wider text-white/50">BODOVA iz dostignuća</div>
+          <div className="font-display font-black text-2xl text-brand">{totalBODOVA}</div>
         </div>
         <div className="glass-strong rounded-2xl p-4 text-center">
           <div className="text-[10px] uppercase tracking-wider text-white/50">Streak</div>
@@ -2400,7 +2517,7 @@ function AchievementsPage({ athlete }) {
                 <div className={"text-5xl mb-2 " + (isUnlocked ? '' : 'grayscale')}>{a.icon_emoji || a.icon || '🏆'}</div>
                 <div className={"font-display font-black text-sm mb-1 " + (isUnlocked ? 'text-gold' : 'text-white/70')}>{a.name}</div>
                 <div className="text-[11px] text-white/50 mb-2 line-clamp-2">{a.description}</div>
-                {a.xp_reward && <div className="text-xs font-bold text-brand mb-2">+{a.xp_reward} XP</div>}
+                {a.xp_reward && <div className="text-xs font-bold text-brand mb-2">+{a.xp_reward} BODOVA</div>}
                 {!isUnlocked && progress && (
                   <div className="space-y-1">
                     <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
@@ -2488,7 +2605,7 @@ function LeaderboardPage({ athlete }) {
   }
 
   const myRank = rows.findIndex(r => r.id === athlete?.id) + 1;
-  const metricLabel = { reels:'Reels', sales:'Prodaje', xp:'XP' }[metric];
+  const metricLabel = { reels:'Reels', sales:'Prodaje', xp:'BODOVA' }[metric];
 
   return (
     <div className="space-y-6">
@@ -2519,7 +2636,7 @@ function LeaderboardPage({ athlete }) {
           ))}
         </div>
         <div className="flex gap-1 glass rounded-xl p-1">
-          {[['reels','🎬 Reels'],['sales','💎 Prodaje'],['xp','⚡ XP']].map(([k,l]) => (
+          {[['reels','🎬 Reels'],['sales','💎 Prodaje'],['xp','⚡ BODOVA']].map(([k,l]) => (
             <button key={k} onClick={()=>setMetric(k)} className={"px-3 py-1.5 rounded-lg text-xs font-bold " + (metric===k ? 'bg-brand text-bg0' : 'text-white/70')}>{l}</button>
           ))}
         </div>
@@ -2662,14 +2779,14 @@ const GENERAL_SETTINGS = [
   { key:'sale_pending_days', label:'Dana dok sale pending → available (Stripe refund period)', placeholder:'30' },
   { key:'monthly_target_reels', label:'Mesečna meta reels po atleti', placeholder:'30' },
   { key:'default_currency', label:'Valuta', placeholder:'EUR' },
-  { key:'season_xp_reset', label:'Reset XP po sezoni (true/false)', placeholder:'false' },
+  { key:'season_xp_reset', label:'Reset BODOVA po sezoni (true/false)', placeholder:'false' },
   { key:'maintenance_mode', label:'Maintenance mode (true/false)', placeholder:'false' },
   { key:'allow_new_signups', label:'Dozvoli nove registracije (true/false)', placeholder:'true' },
   { key:'platform_name', label:'Ime platforme', placeholder:'VAMIT-5 Athlete Portal' },
   { key:'support_response_time', label:'Support response time (npr. "24h")', placeholder:'24h' },
-  { key:'achievement_unlock_xp_multiplier', label:'XP multiplier za dostignuća', placeholder:'1' },
+  { key:'achievement_unlock_xp_multiplier', label:'BODOVA multiplier za dostignuća', placeholder:'1' },
   { key:'streak_bonus_threshold', label:'Streak bonus prag (dana)', placeholder:'7' },
-  { key:'streak_bonus_xp', label:'Streak bonus XP', placeholder:'50' },
+  { key:'streak_bonus_xp', label:'Streak bonus BODOVA', placeholder:'50' },
 ];
 
 function AdminSettings() {
@@ -2861,7 +2978,7 @@ function AdminAchievements() {
                 <div className="min-w-0">
                   <div className="font-bold text-sm truncate">{a.name}</div>
                   <div className="text-[11px] text-white/50 truncate">{a.description}</div>
-                  <div className="text-[10px] text-brand font-bold mt-0.5">+{a.xp_reward} XP</div>
+                  <div className="text-[10px] text-brand font-bold mt-0.5">+{a.xp_reward} BODOVA</div>
                 </div>
               </div>
               <div className="flex flex-col gap-1 shrink-0">
@@ -2927,7 +3044,7 @@ function AchievementEditModal({ ach, onClose, onSave }) {
           <EditField label="Code (opciono)" value={form.code} onChange={v=>setForm({...form, code:v})}/>
           <EditField label="Opis" value={form.description} onChange={v=>setForm({...form, description:v})}/>
           <EditField label="Icon (emoji)" value={form.icon} onChange={v=>setForm({...form, icon:v})}/>
-          <EditField label="XP nagrada" value={form.xp_reward} onChange={v=>setForm({...form, xp_reward:v})}/>
+          <EditField label="BODOVA nagrada" value={form.xp_reward} onChange={v=>setForm({...form, xp_reward:v})}/>
           <EditField label="Tip uslova" type="select" options={['count','streak']} value={form.kind} onChange={v=>setForm({...form, kind:v})}/>
           {form.kind === 'count' && (
             <EditField label="Entity" type="select" options={['reels','sales']} value={form.entity} onChange={v=>setForm({...form, entity:v})}/>
@@ -3175,6 +3292,41 @@ function LessonEditModal({ lesson, onClose, onSave }) {
 // =====================================================
 // === NOTIFICATIONS PAGE ===
 // =====================================================
+// Notifikacije ON/OFF dugme — vidljivo i u Notifikacije strani, ne samo Profil
+function NotificationToggle() {
+  const [granted, setGranted] = useState(typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  const [denied, setDenied] = useState(typeof Notification !== 'undefined' && Notification.permission === 'denied');
+
+  async function turnOn() {
+    if (typeof Notification === 'undefined') { alert('Browser ne podržava notifikacije.'); return; }
+    const r = await Notification.requestPermission();
+    setGranted(r === 'granted');
+    setDenied(r === 'denied');
+    if (r === 'granted') alert('✓ Notifikacije uključene.');
+  }
+
+  if (denied) return (
+    <div className="glass-strong rounded-2xl p-4 border border-danger/30">
+      <div className="font-bold text-sm">🚫 Notifikacije su blokirane u browseru</div>
+      <div className="text-[11px] text-white/60 mt-1">Idi u podešavanja browsera za ovaj sajt i dozvoli notifikacije.</div>
+    </div>
+  );
+
+  return (
+    <div className={"glass-strong rounded-2xl p-4 border " + (granted ? 'border-lime/40' : 'border-gold/40')}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="font-bold text-sm">{granted ? '✓ Notifikacije UKLJUČENE' : '🔔 Uključi notifikacije'}</div>
+          <div className="text-[11px] text-white/60 mt-0.5">{granted ? 'Dobijaš obaveštenja i kad portal nije otvoren.' : 'Klikni da dozvoliš obaveštenja na telefonu/računaru.'}</div>
+        </div>
+        {!granted && (
+          <button onClick={turnOn} className="px-4 py-2 rounded-lg bg-brand text-bg0 text-xs font-bold shrink-0">Uključi</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NotificationsPage({ athlete }) {
   const [list, setList] = useState([]);
   const [filter, setFilter] = useState('all');
@@ -3232,6 +3384,9 @@ function NotificationsPage({ athlete }) {
         </div>
         {unreadCount > 0 && <button onClick={markAllRead} className="px-4 py-2 rounded-xl bg-brand text-bg0 text-xs font-bold shrink-0">Označi sve pročitano</button>}
       </div>
+
+      {/* TOGGLE: ukljuci/iskljuci notifikacije */}
+      <NotificationToggle/>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[['all','Sve'],['unread','Nepročitane'],['urgent','Hitne']].map(([k,l]) => (
@@ -3465,15 +3620,23 @@ const NOTIF_FALLBACK = {
   payout_rejected:{ title: '❌ Isplata odbijena',      body: 'Tvoj payout zahtev je odbijen.',                 icon:'⚠️', priority:'high' },
   welcome:        { title: '👋 Dobrodošao u VAMIT-5!', body: 'Tvoj nalog je spreman. Postavi prvi Reel.',      icon:'🚀', priority:'high' },
   level_up:       { title: '🎉 Promovisan si u {level}!', body: 'Tvoj nivo je porastao.',                      icon:'👑', priority:'celebration' },
-  achievement:    { title: '🏆 Novo dostignuće!',      body: 'Otključao si "{name}" (+{xp} XP)',               icon:'🏆', priority:'normal' },
+  achievement:    { title: '🏆 Novo dostignuće!',      body: 'Otključao si "{name}" (+{xp} BODOVA)',               icon:'🏆', priority:'normal' },
   sale:           { title: '💎 Nova prodaja!',         body: '+€{amount} od nove prodaje preko tvog linka.',    icon:'💎', priority:'high' },
 };
 
 async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
   try {
+    // Pomocni aliases — atomicno postavi sve varijante koje template moze imati
+    const v = { ...vars };
+    if (v.amount !== undefined) {
+      v.amount_eur = v.amount; v.amount_e = v.amount; v.iznos = v.amount;
+    }
     const interpolate = (s) => {
       if (!s) return '';
-      return s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m));
+      // Podrzi i {{key}} i {key}
+      return s
+        .replace(/\{\{(\w+)\}\}/g, (m, k) => (v[k] !== undefined ? String(v[k]) : m))
+        .replace(/\{(\w+)\}/g, (m, k) => (v[k] !== undefined ? String(v[k]) : m));
     };
 
     let tpl = null;
