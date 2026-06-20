@@ -314,39 +314,97 @@ function LoginPage() {
   const [step, setStep] = useState("email");
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [inviter, setInviter] = useState(null);
+
+  // Ako je atleta dosao preko invite link-a, povuci ime onog ko ga je doveo
+  useEffect(() => {
+    async function loadInviter() {
+      let ref = null;
+      try { ref = localStorage.getItem('vamit_ref'); } catch(e){}
+      if (!ref) return;
+      const { data: refAth } = await supa.from('athletes').select('id, name, promo_code').eq('promo_code', ref).maybeSingle();
+      if (refAth) {
+        const { data: refProf } = await supa.from('profiles').select('full_name, avatar_url').eq('id', refAth.id).maybeSingle();
+        setInviter({ name: refProf?.full_name || refAth.name || refAth.promo_code, avatar: refProf?.avatar_url });
+      }
+    }
+    loadInviter();
+  }, []);
 
   async function sendCode(e) {
     e.preventDefault();
     setLoading(true); setErr(null);
-    const { error } = await supa.auth.signInWithOtp({ email, options:{ shouldCreateUser:true } });
+    const { error } = await supa.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: true }
+    });
     setLoading(false);
-    if (error) setErr(error.message);
-    else setStep("code");
+    if (error) {
+      const msg = error.message || 'Greška';
+      let friendly = msg;
+      if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('over_email_send_rate_limit')) {
+        friendly = '⏳ Previše pokušaja. Sačekaj 5-10 minuta pa probaj opet.';
+      } else if (msg.includes('Signups not allowed') || msg.includes('Email signups are disabled')) {
+        friendly = '⚠️ Registracija privremeno onemogućena. Prijavi se prvi put preko Rewardful linka ispod.';
+      } else if (msg.includes('invalid') || msg.includes('Invalid')) {
+        friendly = 'Email nije validan. Proveri ga još jednom.';
+      }
+      setErr(friendly);
+    } else {
+      setStep("code");
+    }
   }
   async function verifyCode(e) {
     e.preventDefault();
     setLoading(true); setErr(null);
-    const { error } = await supa.auth.verifyOtp({ email, token: code.trim(), type:'email' });
+    const { error } = await supa.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: code.trim(),
+      type: 'email'
+    });
     setLoading(false);
-    if (error) setErr(error.message);
-    else { window.location.hash = '#/dashboard'; }
+    if (error) {
+      const msg = error.message || 'Pogrešan kod';
+      let friendly = msg;
+      if (msg.includes('expired') || msg.includes('Token has expired')) friendly = 'Kod je istekao. Zatraži novi.';
+      else if (msg.includes('invalid') || msg.includes('Token not found')) friendly = 'Kod nije ispravan. Proveri ga još jednom.';
+      setErr(friendly);
+    } else {
+      window.location.hash = '#/dashboard';
+    }
   }
 
   return (
     <div className="relative z-10 min-h-[80vh] flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
+        {/* POZVAO TE BANNER */}
+        {inviter && (
+          <div className="glass-strong rounded-2xl p-4 mb-4 border border-brand/30 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-bg0 border border-brand/40 shrink-0">
+              {inviter.avatar
+                ? <img src={inviter.avatar} alt="" className="w-full h-full object-cover"/>
+                : <div className="w-full h-full flex items-center justify-center text-lg">👤</div>}
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-brand font-bold">Pozvao te</div>
+              <div className="font-display font-black text-sm truncate">{inviter.name}</div>
+              <div className="text-[10px] text-white/60">Ulaziš u njegov tim — on dobija 15% provizije od tvoje prodaje.</div>
+            </div>
+          </div>
+        )}
+
         <div className="glass-strong rounded-3xl p-8 sm:p-10">
           <h1 className="font-display text-2xl sm:text-3xl font-black mb-2">Prijavi se</h1>
           {step==="email" && (
             <>
-              <p className="text-sm text-white/60 mb-6">Unesi email — šaljemo ti 6-cifreni kod.</p>
+              <p className="text-sm text-white/60 mb-6">Unesi email — šaljemo ti 6-cifreni kod. <b>Radi i za nove atlete</b> (automatski kreiramo nalog).</p>
               <form onSubmit={sendCode} className="space-y-4">
                 <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="tvoj@email.com"
                   className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/>
                 {err && <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">{err}</div>}
                 <button type="submit" disabled={loading||!email}
                   className="w-full py-3.5 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand via-brand2 to-brand3 disabled:opacity-50">
-                  {loading ? "Šaljem..." : "Pošalji kod"}
+                  {loading ? "Šaljem..." : "Pošalji kod na email"}
                 </button>
               </form>
             </>
@@ -354,7 +412,7 @@ function LoginPage() {
           {step==="code" && (
             <>
               <p className="text-sm text-white/60 mb-1">Kod je poslat na <b className="text-brand">{email}</b></p>
-              <p className="text-xs text-white/50 mb-6">Otvori email i ukucaj kod.</p>
+              <p className="text-xs text-white/50 mb-6">Otvori email (proveri i SPAM!) i ukucaj kod.</p>
               <form onSubmit={verifyCode} className="space-y-4">
                 <input type="text" inputMode="numeric" autoComplete="one-time-code" required value={code}
                   onChange={e=>setCode(e.target.value.replace(/\s/g,''))} placeholder="123456" maxLength={10}
@@ -370,7 +428,8 @@ function LoginPage() {
             </>
           )}
           <div className="mt-6 pt-6 border-t border-white/10 text-center text-xs text-white/50">
-            Nisi još atleta? <a href={FORM_URL} target="_blank" rel="noopener" className="text-brand font-bold">Prijavi se →</a>
+            Hoces da pratis prodaje? <a href={FORM_URL} target="_blank" rel="noopener" className="text-brand font-bold">Registruj se i na Rewardful →</a>
+            <div className="text-[10px] text-white/40 mt-2">Email login radi i bez Rewardful-a, ali za tracking prodaja paketa preporučujemo Rewardful nalog.</div>
           </div>
         </div>
       </div>
