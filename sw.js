@@ -32,8 +32,8 @@ self.addEventListener('push', (e) => {
   const title = data.title || 'VAMIT-5';
   const options = {
     body: data.body || '',
-    icon: 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png',
-    badge: 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png',
+    icon: 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg',
+    badge: 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg',
     data: { url: data.action_url || '/#/dashboard' },
     vibrate: [200, 100, 200],
     requireInteraction: data.priority === 'celebration'
