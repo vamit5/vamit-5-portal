@@ -308,6 +308,25 @@ function LandingPage() {
   );
 }
 
+// Robusan parser za bilo kakav error oblik
+function parseAuthError(error) {
+  if (!error) return null;
+  let msg = '';
+  try {
+    if (typeof error === 'string') msg = error;
+    else if (error.message && typeof error.message === 'string') msg = error.message;
+    else if (error.error_description) msg = error.error_description;
+    else if (error.msg) msg = error.msg;
+    else if (error.error) msg = typeof error.error === 'string' ? error.error : (error.error.message || '');
+    else {
+      const s = JSON.stringify(error);
+      msg = (s && s !== '{}' && s !== 'null') ? s : '';
+    }
+  } catch(e) { msg = String(error); }
+  if (!msg || msg === '{}' || msg === 'undefined' || msg === 'null') return null;
+  return msg;
+}
+
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -316,16 +335,37 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [inviter, setInviter] = useState(null);
 
+  // Pokupi ?ref= iz URL-a direktno (slucaj kada App jos nije save-ovao u localStorage)
+  function getRef() {
+    try {
+      const fromLS = localStorage.getItem('vamit_ref');
+      if (fromLS) return fromLS.toUpperCase().trim();
+    } catch(e){}
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get('ref') || params.get('via');
+      if (r) return r.toUpperCase().trim();
+    } catch(e){}
+    return null;
+  }
+
   // Ako je atleta dosao preko invite link-a, povuci ime onog ko ga je doveo
   useEffect(() => {
     async function loadInviter() {
-      let ref = null;
-      try { ref = localStorage.getItem('vamit_ref'); } catch(e){}
-      if (!ref) return;
-      const { data: refAth } = await supa.from('athletes').select('id, name, promo_code').eq('promo_code', ref).maybeSingle();
+      const ref = getRef();
+      if (!ref) { console.log('[VAMIT] No invite ref'); return; }
+      console.log('[VAMIT] Looking up inviter by promo:', ref);
+      // case-insensitive search
+      const { data: refAth, error: e1 } = await supa.from('athletes')
+        .select('id, name, promo_code').ilike('promo_code', ref).maybeSingle();
+      if (e1) console.warn('athletes lookup err:', e1);
       if (refAth) {
+        try { localStorage.setItem('vamit_ref', refAth.promo_code); } catch(e){}
         const { data: refProf } = await supa.from('profiles').select('full_name, avatar_url').eq('id', refAth.id).maybeSingle();
         setInviter({ name: refProf?.full_name || refAth.name || refAth.promo_code, avatar: refProf?.avatar_url });
+        console.log('[VAMIT] Inviter found:', refProf?.full_name || refAth.promo_code);
+      } else {
+        console.log('[VAMIT] Inviter not found for promo:', ref);
       }
     }
     loadInviter();
@@ -334,40 +374,58 @@ function LoginPage() {
   async function sendCode(e) {
     e.preventDefault();
     setLoading(true); setErr(null);
-    const { error } = await supa.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: true }
-    });
+    let rawError = null;
+    try {
+      const r = await supa.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: { shouldCreateUser: true }
+      });
+      rawError = r.error;
+    } catch(ex) { rawError = ex; }
     setLoading(false);
-    if (error) {
-      const msg = error.message || 'Greška';
-      let friendly = msg;
-      if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('over_email_send_rate_limit')) {
+    console.log('[LOGIN sendCode] error:', rawError);
+
+    if (rawError) {
+      const msg = parseAuthError(rawError);
+      let friendly;
+      if (!msg) {
+        // Prazan/nepoznat error
+        friendly = '⚠️ Email login nije uspeo. Verovatni razlozi: (1) Rate limit — sačekaj 5-10 min, (2) Email Provider u Supabase je isključen — admin treba da ga upali.';
+      } else if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('over_email_send_rate_limit')) {
         friendly = '⏳ Previše pokušaja. Sačekaj 5-10 minuta pa probaj opet.';
-      } else if (msg.includes('Signups not allowed') || msg.includes('Email signups are disabled')) {
-        friendly = '⚠️ Registracija privremeno onemogućena. Prijavi se prvi put preko Rewardful linka ispod.';
-      } else if (msg.includes('invalid') || msg.includes('Invalid')) {
+      } else if (msg.includes('Signups not allowed') || msg.includes('Email signups are disabled') || msg.includes('signup is disabled')) {
+        friendly = '⚠️ Registracija nije uključena u Supabase. Admin treba da upali Email Provider.';
+      } else if (msg.toLowerCase().includes('invalid email')) {
         friendly = 'Email nije validan. Proveri ga još jednom.';
+      } else {
+        friendly = msg;
       }
       setErr(friendly);
     } else {
       setStep("code");
     }
   }
+
   async function verifyCode(e) {
     e.preventDefault();
     setLoading(true); setErr(null);
-    const { error } = await supa.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token: code.trim(),
-      type: 'email'
-    });
+    let rawError = null;
+    try {
+      const r = await supa.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: code.trim(),
+        type: 'email'
+      });
+      rawError = r.error;
+    } catch(ex) { rawError = ex; }
     setLoading(false);
-    if (error) {
-      const msg = error.message || 'Pogrešan kod';
+    console.log('[LOGIN verifyCode] error:', rawError);
+
+    if (rawError) {
+      const msg = parseAuthError(rawError) || 'Pogrešan kod ili greška.';
       let friendly = msg;
       if (msg.includes('expired') || msg.includes('Token has expired')) friendly = 'Kod je istekao. Zatraži novi.';
-      else if (msg.includes('invalid') || msg.includes('Token not found')) friendly = 'Kod nije ispravan. Proveri ga još jednom.';
+      else if (msg.toLowerCase().includes('invalid') || msg.includes('Token not found')) friendly = 'Kod nije ispravan. Proveri ga još jednom.';
       setErr(friendly);
     } else {
       window.location.hash = '#/dashboard';
@@ -4630,17 +4688,20 @@ function App() {
     }
   }, []);
 
-  // === TIM INVITE: sacuvaj ref param u localStorage (da kasnije linkujemo atletu) ===
+  // === TIM INVITE: sacuvaj ref param u localStorage (radi sve dok je u URL-u) ===
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const ref = params.get('ref') || params.get('via');
       if (ref) {
-        localStorage.setItem('vamit_ref', ref.toUpperCase().trim());
-        console.log('[VAMIT] Ref saved:', ref);
+        const upper = ref.toUpperCase().trim();
+        localStorage.setItem('vamit_ref', upper);
+        console.log('[VAMIT] Ref saved sync:', upper);
+      } else {
+        console.log('[VAMIT] No ref in URL. Existing localStorage:', localStorage.getItem('vamit_ref'));
       }
-    } catch(e){}
-  }, []);
+    } catch(e){ console.warn('Ref save fail:', e); }
+  }, [route]);
 
   // === Kad atleta prvi put udje, link je sa onim ko je doveo ===
   useEffect(() => {
