@@ -152,13 +152,59 @@ function useAuth() {
   async function refreshProfile(uid) {
     if (!uid) { setProfile(null); setAthlete(null); return; }
     try {
-      const [{ data: prof }, { data: ath }] = await Promise.all([
+      // 1. Probaj da povuces profile + athlete
+      let [{ data: prof }, { data: ath }] = await Promise.all([
         supa.from('profiles').select('*').eq('id', uid).maybeSingle(),
         supa.from('athletes').select('*').eq('id', uid).maybeSingle()
       ]);
+
+      // 2. FALLBACK: ako fali profile, auto-kreiraj (resava bug kad Rewardful webhook nije fired)
+      if (!prof) {
+        const { data: u } = await supa.auth.getUser();
+        const email = u?.user?.email || '';
+        const isAdmin = email.toLowerCase() === 'vamit5.team@gmail.com';
+        const username = email.split('@')[0] || 'atleta';
+        const { data: newProf } = await supa.from('profiles').insert({
+          id: uid,
+          email,
+          full_name: username,
+          role: isAdmin ? 'super_admin' : 'athlete'
+        }).select().single();
+        prof = newProf;
+        console.log('[VAMIT] Auto-created profile for', email);
+      }
+
+      // 3. FALLBACK: ako nije admin a fali athlete row, auto-kreiraj
+      if (!ath && prof && prof.role !== 'super_admin') {
+        const username = prof.email?.split('@')[0] || 'atleta';
+        const promoBase = username.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'ATHLETE';
+        // Probaj unique promo_code
+        let promo = promoBase;
+        for (let i = 0; i < 10; i++) {
+          const { data: existing } = await supa.from('athletes').select('id').eq('promo_code', promo).maybeSingle();
+          if (!existing) break;
+          promo = promoBase + (i+1);
+        }
+        const now = new Date();
+        const intro = new Date(now.getTime() + 60*24*60*60*1000);
+        const { data: newAth } = await supa.from('athletes').insert({
+          id: uid,
+          status: 'active',
+          level: 'recruit',
+          promo_code: promo,
+          email: prof.email,
+          name: prof.full_name,
+          joined_at: now.toISOString(),
+          level_started_at: now.toISOString(),
+          recruit_intro_period_until: intro.toISOString()
+        }).select().single();
+        ath = newAth;
+        console.log('[VAMIT] Auto-created athlete row for', prof.email);
+      }
+
       setProfile(prof);
       setAthlete(ath);
-    } catch(e) { console.error('profile load', e); }
+    } catch(e) { console.error('profile load fail:', e); }
   }
 
   useEffect(() => {
@@ -402,12 +448,15 @@ function NotificationBell({ athlete }) {
       </button>
 
       {open && (
-        <div className="fixed sm:absolute inset-0 sm:inset-auto sm:top-14 sm:right-4 sm:w-96 sm:max-h-[70vh] z-50 sm:rounded-2xl bg-bg0/95 sm:bg-bg0/98 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden flex flex-col" onClick={e=>e.stopPropagation()}>
+        <div className="fixed sm:absolute inset-0 sm:inset-auto sm:top-14 sm:right-4 sm:w-96 sm:max-h-[70vh] z-50 sm:rounded-2xl bg-bg0/95 sm:bg-bg0/98 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden flex flex-col"
+             style={{paddingTop: 'env(safe-area-inset-top, 0px)'}}
+             onClick={e=>e.stopPropagation()}>
           <div className="flex items-center justify-between p-4 border-b border-white/10">
             <div className="font-display font-black text-base">🔔 Notifikacije</div>
             <div className="flex items-center gap-2">
-              {unread > 0 && <button onClick={markAllRead} className="text-[10px] text-brand font-bold">Označi sve kao pročitano</button>}
-              <button onClick={()=>setOpen(false)} className="text-2xl text-white/60 sm:text-base">✕</button>
+              {unread > 0 && <button onClick={markAllRead} className="text-[10px] text-brand font-bold">Označi sve pročitano</button>}
+              <button onClick={()=>setOpen(false)}
+                className="w-11 h-11 flex items-center justify-center rounded-lg bg-white/10 border border-white/15 text-xl font-black active:scale-95">✕</button>
             </div>
           </div>
           <div className="overflow-y-auto flex-1">
@@ -539,19 +588,25 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
         <main className="min-w-0">{children}</main>
       </div>
 
-      {/* MOBILE MENU OVERLAY */}
+      {/* MOBILE MENU OVERLAY — safe-area-inset top za iOS notch */}
       {menuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-bg0/95 backdrop-blur-xl flex flex-col" onClick={()=>setMenuOpen(false)}>
+        <div className="md:hidden fixed inset-0 z-50 bg-bg0/95 backdrop-blur-xl flex flex-col"
+             style={{paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)'}}
+             onClick={()=>setMenuOpen(false)}>
           <div className="p-4 flex justify-end">
-            <button className="text-3xl">✕</button>
+            <button className="w-11 h-11 flex items-center justify-center rounded-lg bg-white/10 border border-white/15 text-2xl font-black active:scale-95">✕</button>
           </div>
-          <nav className="px-6 space-y-2 flex-1">
+          <nav className="px-6 space-y-2 flex-1 overflow-y-auto" onClick={e=>e.stopPropagation()}>
             {links.map(l => (
               <a key={l.hash} href={l.hash} onClick={()=>setMenuOpen(false)}
                 className="flex items-center gap-3 px-5 py-4 rounded-xl text-lg font-bold bg-white/5 border border-white/10">
                 <span className="text-2xl">{l.emoji}</span>{l.label}
               </a>
             ))}
+            <button onClick={onLogout}
+              className="w-full mt-3 flex items-center gap-3 px-5 py-4 rounded-xl text-lg font-bold bg-danger/10 border border-danger/30 text-danger">
+              <span className="text-2xl">🚪</span>Logout
+            </button>
           </nav>
         </div>
       )}
@@ -1568,6 +1623,7 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
 
       <div className="text-xs text-white/50 text-center">
         {isRecruit ? 'REGRUT: bilo koji iznos' : 'Minimum: €10'} · Stiže za 12-24h nakon provere
+        <div className="text-[10px] text-white/40 mt-1">💡 Iznos možeš upisati i sa zarezom (0,50) ili tačkom (0.50) — oba rade.</div>
       </div>
 
       <div className="glass rounded-2xl p-5 sm:p-6">
