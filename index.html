@@ -3783,39 +3783,82 @@ function AdminReelsQueueLarge() {
     setLoading(false);
   }
 
+  const [processingId, setProcessingId] = useState(null);
+  const [flash, setFlash] = useState(null);
+
   async function decide(id, status, reason=null) {
     const reel = reels.find(r => r.id === id);
-    await supa.from('reels').update({ status, reviewed_at: new Date().toISOString(), reject_reason: reason }).eq('id', id);
-    if (status === 'approved' && reel) {
-      const lvl = reel.athletes?.level || 'recruit';
-      const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', lvl).maybeSingle();
-      const reward = cfg?.reel_reward_cents || 30;
-      await supa.from('earnings_ledger').insert({
-        athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
-        ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
-      });
-      await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
-    } else if (status === 'rejected' && reel) {
-      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+    if (!reel) { alert('Reel nije pronaden u listi.'); return; }
+
+    setProcessingId(id);
+    try {
+      // KORAK 1: Update reel status
+      const { error: updateErr } = await supa.from('reels').update({
+        status, reviewed_at: new Date().toISOString(), reject_reason: reason
+      }).eq('id', id);
+      if (updateErr) throw new Error('Reel update fail: ' + updateErr.message);
+
+      if (status === 'approved') {
+        // KORAK 2: Nadji reel reward iz level configa
+        const lvl = reel.athlete?.level || reel.athletes?.level || 'recruit';
+        const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', lvl).maybeSingle();
+        const reward = cfg?.reel_reward_cents || 30;
+
+        // KORAK 3: Insert earnings (ovo je glavni korak!)
+        const { error: earnErr } = await supa.from('earnings_ledger').insert({
+          athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
+          ref_table: 'reels', ref_id: id, description: 'Reel reward',
+          available_at: new Date().toISOString()
+        });
+        if (earnErr) throw new Error('Earnings insert fail: ' + earnErr.message);
+
+        // KORAK 4: Posalji notifikaciju (ne baci ako fali — vec smo upisali earnings)
+        try {
+          await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
+        } catch(e) { console.warn('Notif failed:', e); }
+
+        setFlash({ type:'ok', text:`✅ ODOBRENO + €${(reward/100).toFixed(2)} za atletu.` });
+      } else if (status === 'rejected') {
+        try {
+          await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+        } catch(e) { console.warn('Notif failed:', e); }
+        setFlash({ type:'ok', text:'❌ Odbijeno + atleta obavestena.' });
+      }
+
+      setTimeout(()=>setFlash(null), 4000);
+      await load();
+    } catch(e) {
+      console.error(e);
+      alert('❌ GREŠKA: ' + e.message + '\n\nProveri da li si pokrenuo BULLETPROOF RLS SQL.');
+      setFlash({ type:'err', text: e.message });
+      setTimeout(()=>setFlash(null), 6000);
+    } finally {
+      setProcessingId(null);
     }
-    load();
   }
 
   if (loading) return <div className="text-center py-12 text-white/50">Učitavam...</div>;
-  if (reels.length === 0) return <div className="glass rounded-2xl p-12 text-center text-white/60 text-lg">✓ Nema reels-ova za review. 👌</div>;
 
   return (
     <div className="space-y-3">
-      {reels.map(r => {
-        const lvl = r.athletes?.level || 'recruit';
+      {flash && (
+        <div className={"p-4 rounded-xl text-sm font-bold " + (flash.type==='ok' ? 'bg-lime/15 border border-lime/40 text-lime' : 'bg-danger/15 border border-danger/40 text-danger')}>
+          {flash.text}
+        </div>
+      )}
+      {reels.length === 0 ? (
+        <div className="glass rounded-2xl p-12 text-center text-white/60 text-lg">✓ Nema reels-ova za review. 👌</div>
+      ) : reels.map(r => {
+        const lvl = r.athlete?.level || r.athletes?.level || 'recruit';
         const theme = LEVEL_THEME[lvl];
+        const isProcessing = processingId === r.id;
         return (
           <div key={r.id} className="glass-strong rounded-2xl p-5 border" style={{borderColor: theme.color+'20'}}>
             <div className="flex items-start justify-between gap-3 mb-3">
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="text-3xl shrink-0">{theme.emoji}</div>
                 <div className="min-w-0">
-                  <div className="font-bold text-base truncate">{r.profiles?.full_name || r.profiles?.email}</div>
+                  <div className="font-bold text-base truncate">{r.profile?.full_name || r.profiles?.full_name || r.profile?.email || r.profiles?.email}</div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold" style={{color: theme.color}}>{theme.name}</span>
                     <span className="text-[11px] text-white/40">· {fromNow(r.submitted_at)}</span>
@@ -3828,11 +3871,12 @@ function AdminReelsQueueLarge() {
             </a>
             {r.caption && <div className="text-xs text-white/60 mb-3 italic">"{r.caption}"</div>}
             <div className="flex gap-3">
-              <button onClick={()=>decide(r.id, 'approved')} className="flex-1 py-4 rounded-xl bg-lime/20 border-2 border-lime/50 text-lime font-black text-base hover:bg-lime/30 transition">
-                ✓ ODOBRI
+              <button onClick={()=>decide(r.id, 'approved')} disabled={isProcessing}
+                className="flex-1 py-4 rounded-xl bg-lime/20 border-2 border-lime/50 text-lime font-black text-base hover:bg-lime/30 transition disabled:opacity-50">
+                {isProcessing ? '⏳ Obrađujem...' : '✓ ODOBRI'}
               </button>
-              <button onClick={()=>{ const reason = prompt('Razlog odbijanja:'); if (reason) decide(r.id, 'rejected', reason); }}
-                className="flex-1 py-4 rounded-xl bg-danger/20 border-2 border-danger/50 text-danger font-black text-base hover:bg-danger/30 transition">
+              <button onClick={()=>{ const reason = prompt('Razlog odbijanja:'); if (reason) decide(r.id, 'rejected', reason); }} disabled={isProcessing}
+                className="flex-1 py-4 rounded-xl bg-danger/20 border-2 border-danger/50 text-danger font-black text-base hover:bg-danger/30 transition disabled:opacity-50">
                 ✗ ODBIJ
               </button>
             </div>
