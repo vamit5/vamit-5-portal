@@ -544,7 +544,14 @@ function Dashboard({ athlete, profile }) {
   const [activity, setActivity] = useState([]);
   const [levelCfg, setLevelCfg] = useState(null);
   const [newAchievement, setNewAchievement] = useState(null);
+  const [tick, setTick] = useState(0); // za live day counter — re-render svaki minut
   const theme = LEVEL_THEME[athlete?.level || 'recruit'];
+
+  // Live counter — ažurira display svaki minut
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x+1), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     if (!athlete) return;
