@@ -1639,8 +1639,8 @@ function AdminOverview({ profile }) {
       supa.from('earnings_ledger').select('amount_cents').eq('status','pending'),
       supa.from('earnings_ledger').select('amount_cents').eq('status','available').is('payout_request_id', null),
       supa.from('payout_requests').select('id',{count:'exact', head:true}).eq('status','pending'),
-      supa.from('reels').select('*, profiles!reels_athlete_id_fkey(full_name, email)').eq('status','pending').order('submitted_at',{ascending:true}).limit(5),
-      supa.from('payout_requests').select('*, profiles!payout_requests_athlete_id_fkey(full_name, email)').eq('status','pending').order('requested_at',{ascending:true}).limit(5)
+      supa.from('reels').select('*').eq('status','pending').order('submitted_at',{ascending:true}).limit(5),
+      supa.from('payout_requests').select('*').eq('status','pending').order('requested_at',{ascending:true}).limit(5)
     ]);
 
     setStats({
@@ -1653,8 +1653,8 @@ function AdminOverview({ profile }) {
       earnings_available: (eAvail.data||[]).reduce((s,x)=>s+x.amount_cents,0),
       payouts_pending: pP.count||0
     });
-    setRecentReels(recR.data||[]);
-    setRecentPayouts(recPay.data||[]);
+    setRecentReels(await enrichWithAthletes(recR.data||[]));
+    setRecentPayouts(await enrichWithAthletes(recPay.data||[]));
   }
 
   return (
@@ -1835,8 +1835,8 @@ function AdminReelsQueue() {
   const [reels, setReels] = useState([]);
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('reels').select('*, profiles!reels_athlete_id_fkey(email, full_name)').eq('status','pending').order('submitted_at');
-    setReels(data||[]);
+    const { data } = await supa.from('reels').select('*').eq('status','pending').order('submitted_at');
+    setReels(await enrichWithAthletes(data||[]));
   }
   async function decide(id, status, reason=null) {
     const reel = reels.find(r=>r.id===id);
@@ -1886,8 +1886,8 @@ function AdminPayoutQueue() {
   const [items, setItems] = useState([]);
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('payout_requests').select('*, profiles!payout_requests_athlete_id_fkey(email, full_name)').eq('status','pending').order('requested_at');
-    setItems(data||[]);
+    const { data } = await supa.from('payout_requests').select('*').eq('status','pending').order('requested_at');
+    setItems(await enrichWithAthletes(data||[]));
   }
   async function decide(id, status) {
     const item = items.find(i=>i.id===id);
@@ -1941,8 +1941,16 @@ function AdminAthletes() {
 
   useEffect(()=>{ load(); }, []);
   async function load() {
-    const { data } = await supa.from('athletes').select('*, profiles!athletes_id_fkey(email, full_name, phone, role)').order('created_at',{ascending:false}).limit(200);
-    setList(data||[]);
+    const { data } = await supa.from('athletes').select('*').order('created_at',{ascending:false}).limit(200);
+    // enrich sa profile podacima
+    if (data && data.length) {
+      const ids = data.map(a => a.id);
+      const { data: profs } = await supa.from('profiles').select('id, full_name, email, phone, role').in('id', ids);
+      const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
+      setList(data.map(a => ({ ...a, profiles: pMap[a.id] || null, profile: pMap[a.id] || null })));
+    } else {
+      setList([]);
+    }
   }
 
   return (
@@ -2414,9 +2422,15 @@ function LeaderboardPage({ athlete }) {
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
 
     // PRVO uzmemo SVE aktivne atlete (sa 0 ili više stats)
-    const { data: allAthletes } = await supa.from('athletes')
-      .select('id, level, profiles!athletes_id_fkey(full_name, email)')
+    const { data: rawAthletes } = await supa.from('athletes')
+      .select('id, level, status, name')
       .eq('status','active').limit(200);
+    const ids = (rawAthletes||[]).map(a => a.id);
+    const { data: profs } = ids.length
+      ? await supa.from('profiles').select('id, full_name, email').in('id', ids)
+      : { data: [] };
+    const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
+    const allAthletes = (rawAthletes||[]).map(a => ({ ...a, profiles: pMap[a.id] || { full_name: a.name, email: '' } }));
 
     // SAD uzmemo stats za izabranu metriku
     const map = {};
@@ -3265,7 +3279,11 @@ function AdminNotifications() {
 
   async function searchAthletes() {
     if (!athleteSearch || athleteSearch.length < 2) { setSearchResults([]); return; }
-    const { data } = await supa.from('athletes').select('id, level, profiles!athletes_id_fkey(full_name, email)').limit(10);
+    const { data: rawAth } = await supa.from('athletes').select('id, level, name').limit(50);
+    const ids = (rawAth||[]).map(a => a.id);
+    const { data: profs } = ids.length ? await supa.from('profiles').select('id, full_name, email').in('id', ids) : { data: [] };
+    const pMap = Object.fromEntries((profs||[]).map(p => [p.id, p]));
+    const data = (rawAth||[]).map(a => ({ ...a, profiles: pMap[a.id] || { full_name: a.name, email: '' } }));
     const q = athleteSearch.toLowerCase();
     setSearchResults((data||[]).filter(a => {
       const name = (a.profiles?.full_name||'').toLowerCase();
@@ -3416,15 +3434,38 @@ function AdminNotifications() {
 // =====================================================
 // === sendTemplated: posalji notifikaciju iz template-a u bazi ===
 // =====================================================
+// Fallback poruke kad template fali u bazi
+const NOTIF_FALLBACK = {
+  reel_approved:  { title: '✅ Reel odobren!',       body: 'Tvoj reel je odobren. +€{amount} dodato na zaradu.', icon:'🎬', priority:'high' },
+  reel_rejected:  { title: '❌ Reel odbijen',          body: '{reason}',                                       icon:'🎬', priority:'normal' },
+  payout_paid:    { title: '💰 Isplata izvršena!',     body: 'Tvoja isplata od €{amount} je poslata.',         icon:'💸', priority:'high' },
+  payout_rejected:{ title: '❌ Isplata odbijena',      body: 'Tvoj payout zahtev je odbijen.',                 icon:'⚠️', priority:'high' },
+  welcome:        { title: '👋 Dobrodošao u VAMIT-5!', body: 'Tvoj nalog je spreman. Postavi prvi Reel.',      icon:'🚀', priority:'high' },
+  level_up:       { title: '🎉 Promovisan si u {level}!', body: 'Tvoj nivo je porastao.',                      icon:'👑', priority:'celebration' },
+  achievement:    { title: '🏆 Novo dostignuće!',      body: 'Otključao si "{name}" (+{xp} XP)',               icon:'🏆', priority:'normal' },
+  sale:           { title: '💎 Nova prodaja!',         body: '+€{amount} od nove prodaje preko tvog linka.',    icon:'💎', priority:'high' },
+};
+
 async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
   try {
-    const { data: tpl } = await supa.from('notification_templates').select('*').eq('key', key).maybeSingle();
-    if (!tpl || tpl.active === false) return;
     const interpolate = (s) => {
       if (!s) return '';
       return s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? String(vars[k]) : m));
     };
-    await supa.from('notifications').insert({
+
+    let tpl = null;
+    try {
+      const r = await supa.from('notification_templates').select('*').eq('key', key).maybeSingle();
+      tpl = r.data;
+    } catch(e){}
+
+    // Ako template fali ILI je deaktiviran — koristi fallback (uvek šaljemo notifikaciju)
+    if (!tpl || tpl.active === false) {
+      const fb = NOTIF_FALLBACK[key] || { title: 'Notifikacija', body: '', icon: '🔔', priority: 'normal' };
+      tpl = { title_tpl: fb.title, body_tpl: fb.body, icon: fb.icon, default_priority: fb.priority };
+    }
+
+    const { error } = await supa.from('notifications').insert({
       athlete_id: athleteId,
       type: key,
       title: interpolate(tpl.title_tpl),
@@ -3433,7 +3474,29 @@ async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
       priority: tpl.default_priority || 'normal',
       action_url: actionUrl,
     });
-  } catch(e) { console.log('sendTemplated err:', e); }
+    if (error) console.error('Notif insert greška:', error);
+  } catch(e) { console.error('sendTemplated err:', e); }
+}
+
+// Helper: enrich any list of rows that have athlete_id sa profile + athlete podacima
+// Resava bag: profiles!reels_athlete_id_fkey ne radi jer FK ide na athletes, ne profiles
+async function enrichWithAthletes(rows) {
+  if (!rows || rows.length === 0) return [];
+  const ids = Array.from(new Set(rows.map(r => r.athlete_id).filter(Boolean)));
+  if (ids.length === 0) return rows;
+  const [{ data: athletes }, { data: profiles }] = await Promise.all([
+    supa.from('athletes').select('id, level, status, promo_code, name, email, bank_full_name, bank_iban, bank_name, bank_phone, rewardful_token').in('id', ids),
+    supa.from('profiles').select('id, full_name, email').in('id', ids)
+  ]);
+  const aMap = Object.fromEntries((athletes||[]).map(a => [a.id, a]));
+  const pMap = Object.fromEntries((profiles||[]).map(p => [p.id, p]));
+  return rows.map(r => ({
+    ...r,
+    athlete: aMap[r.athlete_id] || null,
+    profile: pMap[r.athlete_id] || null,
+    profiles: pMap[r.athlete_id] || null,    // back-compat
+    athletes: aMap[r.athlete_id] || null     // back-compat
+  }));
 }
 
 // =====================================================
@@ -3714,9 +3777,9 @@ function AdminReelsQueueLarge() {
 
   async function load() {
     setLoading(true);
-    const { data } = await supa.from('reels').select('*, profiles!reels_athlete_id_fkey(email, full_name), athletes!reels_athlete_id_fkey(level)')
+    const { data } = await supa.from('reels').select('*')
       .eq('status','pending').order('submitted_at', { ascending: true }).limit(100);
-    setReels(data || []);
+    setReels(await enrichWithAthletes(data || []));
     setLoading(false);
   }
 
