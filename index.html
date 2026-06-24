@@ -740,6 +740,45 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
   );
 }
 
+// === BODOVI BONUS KARTICA ===
+// 10.000 BODOVA = €5 bonus
+const BODOVI_PER_EURO = 2000; // 10k = €5
+function BodoviBonusCard({ bodovi }) {
+  const earnedBonusEur = Math.floor(bodovi / BODOVI_PER_EURO) * 0.5; // koliko € već zaradio
+  const nextTier = Math.ceil((bodovi + 1) / 10000) * 10000;
+  const progressInTier = bodovi % 10000;
+  const pct = Math.min(100, Math.round((progressInTier / 10000) * 100));
+  const toGo = nextTier - bodovi;
+
+  return (
+    <div className="glass-strong rounded-2xl p-4 sm:p-5 border border-brand3/30" style={{background: 'linear-gradient(135deg, rgba(168,85,247,0.05), rgba(0,240,255,0.05))'}}>
+      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold">⚡ BODOVI</div>
+          <div className="font-display font-black text-2xl text-brand3">{bodovi.toLocaleString('sr-Latn')}</div>
+          <div className="text-[10px] text-white/50 mt-0.5">Svakih 10.000 = <strong className="text-lime">€5 bonus</strong> ✨</div>
+        </div>
+        {earnedBonusEur > 0 && (
+          <div className="px-3 py-2 rounded-lg bg-lime/15 border border-lime/40">
+            <div className="text-[9px] uppercase text-lime/80 font-bold">Bonus do sada</div>
+            <div className="font-display font-black text-base text-lime">€{earnedBonusEur.toFixed(2)}</div>
+          </div>
+        )}
+      </div>
+      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: pct+'%', background: 'linear-gradient(90deg, #a855f7, #00f0ff)' }}/>
+      </div>
+      <div className="text-[10px] text-white/50 mt-1.5 flex justify-between">
+        <span>{progressInTier.toLocaleString('sr-Latn')} / 10.000</span>
+        <span>Još <strong className="text-brand3">{toGo.toLocaleString('sr-Latn')}</strong> do sledećeg €5 bonusa</span>
+      </div>
+      <div className="text-[10px] text-white/40 mt-2 text-center">
+        💡 +10 BODOVA po reel-u · +50 po prodaji · +50-7500 po dostignuću
+      </div>
+    </div>
+  );
+}
+
 // === MOJ MENTOR (atleta koji me je doveo) ===
 function MyMentor({ athlete }) {
   const [mentor, setMentor] = useState(null);
@@ -1293,6 +1332,9 @@ function Dashboard({ athlete, profile }) {
         <StatCard label="Na čekanju" value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
         <StatCard label="Ukupna zarada" value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
       </div>
+
+      {/* BODOVI BONUS — 10.000 BODOVA = €5 */}
+      <BodoviBonusCard bodovi={stats.bodovi || 0}/>
 
       {/* MENTOR SECTION */}
       <MyMentor athlete={athlete}/>
@@ -2271,70 +2313,6 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
         <p className="text-sm text-white/60">Lični podaci, Rewardful link i bank info.</p>
       </div>
 
-      {/* REWARDFUL LINK CARD */}
-      <div className="glass-strong rounded-2xl p-5 sm:p-6" style={{borderColor:'rgba(0,240,255,0.3)'}}>
-        <div className="mb-3">
-          <div className="font-display font-bold text-base">🔗 Tvoj Rewardful Affiliate Link</div>
-          <div className="text-xs text-white/60 mt-1">Link koji deliš sa pratiocima — kad neko kupi preko njega, ti zaradiš.</div>
-        </div>
-        {hasLink ? (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-brand/30">
-            <code className="text-xs sm:text-sm text-brand flex-1 break-all">{currentLink}</code>
-            <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-brand text-bg0 text-xs font-bold whitespace-nowrap">
-              {copied ? '✓ Kopirano' : '📋 Kopiraj'}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="p-4 rounded-xl bg-bg0/60 border border-gold/30">
-              <div className="text-sm font-bold text-gold mb-2">⚠️ Još nemaš Rewardful link</div>
-              <div className="text-xs text-white/70 mb-3">
-                Da bi pratio prodaje i zarađivao provizije od paketa, treba ti Rewardful affiliate nalog. <strong>2 minuta posao.</strong>
-              </div>
-              <div className="space-y-2">
-                <div className="flex gap-2 items-start text-xs">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">1</span>
-                  <div className="flex-1">
-                    Klikni dugme dole → otvara se Rewardful signup u novom tabu
-                  </div>
-                </div>
-                <div className="flex gap-2 items-start text-xs">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">2</span>
-                  <div className="flex-1">
-                    Registruj se sa <strong className="text-brand">istim email-om</strong> koji koristiš ovde ({profile?.email})
-                  </div>
-                </div>
-                <div className="flex gap-2 items-start text-xs">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">3</span>
-                  <div className="flex-1">
-                    Posle registracije, Rewardful ti daje link tipa <code className="text-brand">https://vamit-5-2.getrewardful.com/?via=TVOJKOD</code> — <strong>kopiraj ga</strong>
-                  </div>
-                </div>
-                <div className="flex gap-2 items-start text-xs">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">4</span>
-                  <div className="flex-1">
-                    Vrati se ovde → zalepi link u polje <strong>"Rewardful affiliate link"</strong> dole → <strong>Sačuvaj</strong>
-                  </div>
-                </div>
-                <div className="flex gap-2 items-start text-xs">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-lime text-bg0 flex items-center justify-center font-black text-[10px]">✓</span>
-                  <div className="flex-1 text-lime font-bold">
-                    Gotovo! Od sad svaka prodaja preko tvog linka ti se pripisuje automatski.
-                  </div>
-                </div>
-              </div>
-            </div>
-            <a href="https://vamit-5-2.getrewardful.com/signup" target="_blank" rel="noopener"
-              className="block w-full py-3 px-4 rounded-xl bg-gradient-to-r from-brand to-brand2 text-bg0 font-extrabold text-sm text-center hover:opacity-90 transition">
-              🚀 Otvori Rewardful registraciju →
-            </a>
-            <div className="text-[10px] text-white/40 text-center">
-              💡 Već si registrovan? Samo zalepi link u polje dole i sačuvaj — sve će raditi.
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* PROFILE PICTURE UPLOAD */}
       <AvatarUpload profile={profile} refreshProfile={refreshProfile}/>
 
@@ -2346,26 +2324,65 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
           <Field label="Puno ime"><input value={form.full_name} onChange={e=>setForm({...form, full_name:e.target.value})} className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm"/></Field>
         </div>
 
-        <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4" style={{borderColor:'rgba(0,240,255,0.3)', borderWidth:'1px', borderStyle:'solid'}}>
-          <div>
-            <div className="font-display font-bold text-base">🔗 Rewardful Affiliate Link</div>
-            <div className="text-xs text-white/60 mt-1">
-              Zalepi ovde svoj Rewardful link (tipa <code className="text-brand text-[10px]">https://vamit-5-2.getrewardful.com/?via=KOD</code>) — bez ovoga nećeš dobijati provizije od prodaja.
-            </div>
-          </div>
-          <Field label="Tvoj Rewardful link">
-            <input
-              value={form.rewardful_token}
-              onChange={e=>setForm({...form, rewardful_token:e.target.value})}
-              placeholder="https://vamit-5-2.getrewardful.com/?via=..."
-              className="w-full px-4 py-3 rounded-xl bg-bg1 border border-brand/30 focus:border-brand outline-none text-sm font-mono"
-            />
-          </Field>
-          {!form.rewardful_token && (
-            <a href="https://vamit-5-2.getrewardful.com/signup" target="_blank" rel="noopener"
-              className="block text-center py-2.5 px-4 rounded-xl bg-brand/15 border border-brand/40 text-brand text-xs font-bold hover:bg-brand/25 transition">
-              🚀 Otvori Rewardful registraciju u novom tabu →
-            </a>
+        {/* REWARDFUL — kondicionalno: uputstvo nestaje kad atleta zalepi link */}
+        <div className="glass-strong rounded-2xl p-5 sm:p-6 space-y-4"
+          style={{borderColor: hasLink ? 'rgba(166,255,59,0.3)' : 'rgba(255,194,75,0.5)', borderWidth:'1px', borderStyle:'solid'}}>
+
+          {hasLink ? (
+            // STANJE 1: Atleta IMA link → samo prikaz + Copy
+            <>
+              <div>
+                <div className="font-display font-bold text-base flex items-center gap-2">
+                  <span className="text-lime">✓</span> Rewardful Affiliate Link
+                </div>
+                <div className="text-xs text-white/60 mt-1">Link koji deliš sa pratiocima. Promene su uvek moguće dole.</div>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-bg0 border border-lime/30">
+                <code className="text-xs sm:text-sm text-lime flex-1 break-all">{currentLink}</code>
+                <button type="button" onClick={copyLink} className="shrink-0 px-3 py-1.5 rounded-lg bg-lime text-bg0 text-xs font-bold whitespace-nowrap">
+                  {copied ? '✓ Kopirano' : '📋 Kopiraj'}
+                </button>
+              </div>
+              <Field label="Promeni link (opciono)">
+                <input
+                  value={form.rewardful_token}
+                  onChange={e=>setForm({...form, rewardful_token:e.target.value})}
+                  placeholder="https://vamit-5-2.getrewardful.com/?via=..."
+                  className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm font-mono"
+                />
+              </Field>
+            </>
+          ) : (
+            // STANJE 2: Atleta NEMA link → uputstvo OBAVEZA + input
+            <>
+              <div className="p-3 rounded-xl bg-gold/15 border border-gold/50">
+                <div className="text-sm font-black text-gold flex items-center gap-2 mb-1">⚠️ OBAVEZA — bez ovoga ne zaradjuješ</div>
+                <div className="text-xs text-white/80">
+                  Rewardful nalog je <strong>jedini način</strong> da Stripe zna ko je prodao paket. Bez linka ovde, provizije neće stizati. <strong>2 minuta posao:</strong>
+                </div>
+              </div>
+
+              <ol className="space-y-2 text-xs text-white/80 list-none">
+                <li className="flex gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">1</span><span>Klikni "Otvori Rewardful registraciju" dole</span></li>
+                <li className="flex gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">2</span><span>Registruj se sa <strong className="text-brand">istim email-om</strong> ({profile?.email})</span></li>
+                <li className="flex gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">3</span><span>Rewardful ti daje link tipa <code className="text-brand text-[10px]">https://vamit-5-2.getrewardful.com/?via=KOD</code></span></li>
+                <li className="flex gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-brand text-bg0 flex items-center justify-center font-black text-[10px]">4</span><span>Zalepi link u polje dole → Sačuvaj</span></li>
+              </ol>
+
+              <a href="https://vamit-5-2.getrewardful.com/signup" target="_blank" rel="noopener"
+                className="block w-full py-3 px-4 rounded-xl bg-gradient-to-r from-gold to-brand text-bg0 font-extrabold text-sm text-center hover:opacity-90 transition">
+                🚀 Otvori Rewardful registraciju →
+              </a>
+
+              <Field label="Zalepi svoj Rewardful link ovde">
+                <input
+                  value={form.rewardful_token}
+                  onChange={e=>setForm({...form, rewardful_token:e.target.value})}
+                  placeholder="https://vamit-5-2.getrewardful.com/?via=..."
+                  className="w-full px-4 py-3 rounded-xl bg-bg1 border border-gold/40 focus:border-gold outline-none text-sm font-mono"
+                />
+              </Field>
+            </>
           )}
         </div>
 
@@ -2942,7 +2959,7 @@ function AdminPage() {
           {k:'teams',         label:'🌐 Timovi'},
           {k:'notifications', label:'🔔 Broadcast'},
           {k:'templates',     label:'📨 Notif. Templates'},
-          {k:'landing',       label:'📝 Landing CMS'},
+          {k:'landing',       label:'📝 Portal CMS'},
           {k:'links',         label:'🔗 Linkovi'},
           {k:'settings',      label:'⚙️ Podešavanja'},
           {k:'levels',        label:'🎖️ Nivoi'},
@@ -2994,8 +3011,8 @@ function AdminReelsQueue() {
       });
       // Dodaj BODOVE (XP) za odobreni reel — 20 bodova
       await supa.from('xp_ledger').insert({
-        athlete_id: reel.athlete_id, amount: 20, source: 'reel',
-        description: 'Odobren reel +20 BODOVA'
+        athlete_id: reel.athlete_id, amount: 10, source: 'reel',
+        description: 'Odobren reel +10 BODOVA'
       });
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
     } else if (status === 'rejected') {
@@ -5017,65 +5034,67 @@ const TEMPLATE_LABELS = {
 // =====================================================
 // === ADMIN: LANDING CMS (Edit oficijelni sajt) ===
 // =====================================================
+// === PORTAL CMS — sva tekstualna polja portala koja admin moze editovati ===
+// Kljuc se cita iz public.settings tabele. Portal koristi `usePortalText(key, fallback)` hook.
 const LANDING_SECTIONS = [
-  { title:'🖼️ Hero (vrh stranice)', keys: [
-    { key:'landing_logo_url', label:'Logo URL', placeholder:'https://...' },
-    { key:'landing_hero_kicker', label:'Hero kicker (mali tekst iznad naslova)' },
-    { key:'landing_hero_title', label:'Hero naslov (veliki)' },
-    { key:'landing_hero_subtitle', label:'Hero podnaslov', textarea:true },
-    { key:'landing_hero_image', label:'Hero slika URL (opciono)' },
+  { title:'🏠 Landing portala (vrh)', keys: [
+    { key:'portal_landing_kicker', label:'Mali tekst iznad naslova', placeholder:'Prijave otvorene' },
+    { key:'portal_landing_title', label:'Veliki naslov', placeholder:'VAMIT-5 Athlete Portal', textarea:true },
+    { key:'portal_landing_subtitle', label:'Podnaslov ispod', placeholder:'Postavi Reels, prati prodaje, gradi tim — sve na jednom mestu.', textarea:true },
+    { key:'portal_landing_cta', label:'Tekst velikog dugmeta (Prijava)', placeholder:'Uđi u portal →' },
   ]},
-  { title:'🚀 Dugmad (2 buttona)', keys: [
-    { key:'landing_cta_primary_text', label:'Primary dugme — tekst' },
-    { key:'landing_cta_primary_url', label:'Primary dugme — link', placeholder:'https://vamit-5-2.getrewardful.com/signup' },
-    { key:'landing_cta_secondary_text', label:'Secondary dugme — tekst' },
-    { key:'landing_cta_secondary_url', label:'Secondary dugme — link', placeholder:'https://vamit-5-portal.vercel.app/#/login' },
+  { title:'🔐 Login stranica', keys: [
+    { key:'portal_login_title', label:'Naslov', placeholder:'Prijavi se' },
+    { key:'portal_login_subtitle', label:'Tekst ispod naslova', placeholder:'Unesi email — šaljemo ti 6-cifreni kod. Radi i za nove atlete.', textarea:true },
+    { key:'portal_login_button_send', label:'Dugme: Pošalji kod', placeholder:'Pošalji kod na email' },
+    { key:'portal_login_button_verify', label:'Dugme: Potvrdi kod', placeholder:'Uđi u portal' },
+    { key:'portal_login_resend_link', label:'Link: Pošalji ponovo', placeholder:'Pošalji ponovo' },
+    { key:'portal_login_rewardful_note', label:'Napomena o Rewardful-u', placeholder:'Hoces da pratis prodaje?', textarea:true },
   ]},
-  { title:'📊 Stats (3 brojke)', keys: [
-    { key:'landing_stats_athletes', label:'Brojka 1' },
-    { key:'landing_stats_label_1', label:'Label 1' },
-    { key:'landing_stats_paid', label:'Brojka 2' },
-    { key:'landing_stats_label_2', label:'Label 2' },
-    { key:'landing_stats_reels', label:'Brojka 3' },
-    { key:'landing_stats_label_3', label:'Label 3' },
+  { title:'📊 Dashboard — naslovi', keys: [
+    { key:'portal_dash_welcome', label:'Pozdrav korisniku', placeholder:'Zdravo, {ime}!' },
+    { key:'portal_dash_subtitle', label:'Mali tekst ispod', placeholder:'Tvoj VAMIT-5 dashboard', textarea:true },
+    { key:'portal_dash_progress_title', label:'Naslov progres sekcije', placeholder:'Tvoja sledeća promocija' },
+    { key:'portal_dash_team_section_title', label:'Naslov Moj Tim sekcije', placeholder:'Moj Tim' },
+    { key:'portal_dash_team_intro', label:'Mali tekst ispod Moj Tim', placeholder:'Procentualna provizija od svake prodaje tvog tima — doživotno.' },
   ]},
-  { title:'⚙️ Kako radi (3 koraka)', keys: [
-    { key:'landing_how_title', label:'Sekcija naslov' },
-    { key:'landing_how_step1_title', label:'Korak 1 — naslov' },
-    { key:'landing_how_step1_text', label:'Korak 1 — tekst', textarea:true },
-    { key:'landing_how_step2_title', label:'Korak 2 — naslov' },
-    { key:'landing_how_step2_text', label:'Korak 2 — tekst', textarea:true },
-    { key:'landing_how_step3_title', label:'Korak 3 — naslov' },
-    { key:'landing_how_step3_text', label:'Korak 3 — tekst', textarea:true },
+  { title:'🎬 Reels stranica', keys: [
+    { key:'portal_reels_title', label:'Naslov', placeholder:'🎬 Moji Reels' },
+    { key:'portal_reels_intro', label:'Uvodni tekst', placeholder:'Postavi link na svoj Reel ovde. Admin ga odobri, zarada se pripisuje.', textarea:true },
+    { key:'portal_reels_rules', label:'Pravila šta je validan Reel', placeholder:'1. Reel mora biti tvoj orginal\n2. Mora biti vidljiv na Instagramu\n3. Postavljen u poslednjih 7 dana', textarea:true },
+    { key:'portal_reels_submit_button', label:'Dugme za postavljanje', placeholder:'📤 Postavi Reel' },
   ]},
-  { title:'🎖️ Nivoi (4 kartice)', keys: [
-    { key:'landing_levels_title', label:'Sekcija naslov' },
-    { key:'landing_levels_subtitle', label:'Podnaslov' },
-    { key:'landing_level_recruit_desc', label:'RECRUIT opis', textarea:true },
-    { key:'landing_level_pro_desc', label:'PRO opis', textarea:true },
-    { key:'landing_level_commando_desc', label:'COMMANDO opis', textarea:true },
-    { key:'landing_level_elite_desc', label:'ELITE opis', textarea:true },
+  { title:'💸 Isplate stranica', keys: [
+    { key:'portal_isplate_title', label:'Naslov', placeholder:'💸 Isplate' },
+    { key:'portal_isplate_intro', label:'Uvodni tekst', placeholder:'Pregled, zahtevi i istorija.' },
+    { key:'portal_isplate_reels_label', label:'Naslov Reels kartice', placeholder:'🎬 Reels zarada' },
+    { key:'portal_isplate_sales_label', label:'Naslov Prodaja kartice', placeholder:'💎 Prodaja paketa' },
+    { key:'portal_isplate_team_label', label:'Naslov Tim kartice', placeholder:'👥 Tim provizija' },
+    { key:'portal_isplate_min_note', label:'Tekst ispod min iznosa', placeholder:'Stiže za 12-24h nakon provere' },
   ]},
-  { title:'❓ FAQ (3 pitanja)', keys: [
-    { key:'landing_faq_title', label:'FAQ naslov' },
-    { key:'landing_faq_q1', label:'Pitanje 1' },
-    { key:'landing_faq_a1', label:'Odgovor 1', textarea:true },
-    { key:'landing_faq_q2', label:'Pitanje 2' },
-    { key:'landing_faq_a2', label:'Odgovor 2', textarea:true },
-    { key:'landing_faq_q3', label:'Pitanje 3' },
-    { key:'landing_faq_a3', label:'Odgovor 3', textarea:true },
+  { title:'👤 Profil stranica', keys: [
+    { key:'portal_profil_title', label:'Naslov', placeholder:'👤 Profil' },
+    { key:'portal_profil_subtitle', label:'Tekst ispod', placeholder:'Lični podaci, Rewardful link i bank info.' },
+    { key:'portal_profil_obligation_text', label:'OBAVEZA Rewardful tekst', placeholder:'⚠️ OBAVEZA — bez ovoga ne zarađuješ' },
+    { key:'portal_profil_obligation_body', label:'Opis OBAVEZE', placeholder:'Rewardful nalog je jedini način da Stripe zna ko je prodao paket. Bez linka ovde, provizije neće stizati.', textarea:true },
   ]},
-  { title:'🦶 Footer + Social', keys: [
-    { key:'landing_footer_text', label:'Footer tekst' },
-    { key:'landing_contact_email', label:'Kontakt email' },
-    { key:'landing_instagram_url', label:'Instagram URL' },
-    { key:'landing_tiktok_url', label:'TikTok URL' },
-    { key:'landing_youtube_url', label:'YouTube URL' },
-    { key:'landing_main_site_url', label:'Glavni sajt URL' },
+  { title:'📚 Kurs stranica', keys: [
+    { key:'portal_kurs_title', label:'Naslov', placeholder:'📚 VAMIT-5 Kurs' },
+    { key:'portal_kurs_intro', label:'Uvodni tekst', placeholder:'Sve što treba znati o programu, prodajama i Reels-ovima.', textarea:true },
   ]},
-  { title:'🌐 SEO Meta', keys: [
-    { key:'landing_meta_title', label:'Browser tab title' },
-    { key:'landing_meta_description', label:'Meta description', textarea:true },
+  { title:'🏆 Dostignuća stranica', keys: [
+    { key:'portal_dostignuca_title', label:'Naslov', placeholder:'🏆 Dostignuća' },
+    { key:'portal_dostignuca_intro', label:'Uvodni tekst', placeholder:'Otključavaj badge-ove kroz akciju. Svako dostignuće = BODOVA nagrada.', textarea:true },
+    { key:'portal_dostignuca_bonus_note', label:'Mali tekst o BODOVI bonusu', placeholder:'💡 Svakih 10.000 BODOVA = €5 bonus pri sledećoj isplati' },
+  ]},
+  { title:'📊 Rang Lista stranica', keys: [
+    { key:'portal_rang_title', label:'Naslov', placeholder:'📊 Rang Lista' },
+    { key:'portal_rang_intro', label:'Uvodni tekst', placeholder:'Najbolji atlete VAMIT-5 portala — po BODOVIMA u tekućoj sezoni.', textarea:true },
+  ]},
+  { title:'🔔 Push notifikacije (template-ovi)', keys: [
+    { key:'portal_push_reel_remind_1', label:'Daily reel reminder #1', placeholder:'🎬 Reel za danas? — Postavi sad i pokupi novac sa stola!', textarea:true },
+    { key:'portal_push_reel_remind_2', label:'Daily reel reminder #2', placeholder:'🔥 Tvoj dan još nije gotov! — Reel = € u džepu', textarea:true },
+    { key:'portal_push_reel_remind_3', label:'Daily reel reminder #3', placeholder:'💎 Ne propusti dnevnu zaradu — Postavi Reel danas', textarea:true },
   ]},
 ];
 
@@ -5108,16 +5127,16 @@ function AdminLanding() {
   return (
     <div className="space-y-4">
       <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
-        📝 Ovde edituješ <b>vamit5-affiliate.vercel.app</b> (oficijelni landing sajt). Promene su <b>odmah aktivne</b> — refresh sajta i vidiš novo. Svaka kartica = jedna sekcija sajta.
+        📝 Ovde edituješ <b>VAMIT-5 Athlete Portal</b> — sav tekst koji atlete vide. Promene su <b>odmah aktivne</b> — atleta refresh-uje portal i vidi novo. Svaka kartica = jedna stranica.
       </div>
 
       <div className="glass rounded-2xl p-4 border border-gold/20">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <div className="text-sm font-bold">🔗 Pregled sajta uživo</div>
-            <div className="text-[11px] text-white/60">Otvori da vidiš trenutno stanje</div>
+            <div className="text-sm font-bold">🔗 Pregled portala uživo</div>
+            <div className="text-[11px] text-white/60">Otvori novi tab da vidiš trenutno stanje</div>
           </div>
-          <a href="https://vamit5-affiliate.vercel.app/" target="_blank" rel="noopener" className="px-4 py-2 rounded-xl bg-gold/15 border border-gold/40 text-gold text-xs font-bold">Otvori sajt ↗</a>
+          <a href="https://vamit-5-portal.vercel.app/" target="_blank" rel="noopener" className="px-4 py-2 rounded-xl bg-gold/15 border border-gold/40 text-gold text-xs font-bold">Otvori portal ↗</a>
         </div>
       </div>
 
