@@ -798,7 +798,7 @@ function BodoviBonusCard({ bodovi }) {
         <span>Još <strong className="text-brand3">{toGo.toLocaleString('sr-Latn')}</strong> do sledećeg €5 bonusa</span>
       </div>
       <div className="text-[10px] text-white/40 mt-2 text-center">
-        💡 +10 BODOVA po reel-u · +50 po prodaji · +50-7500 po dostignuću
+        💡 +10 BODOVA po reel-u · +50 po prodaji · +5 po lekciji · 20-75000 po dostignuću
       </div>
     </div>
   );
@@ -1416,6 +1416,33 @@ function Dashboard({ athlete, profile }) {
 }
 
 // === ACHIEVEMENT ENGINE ===
+// Helper koji povlaci sve potrebne podatke i pokrece engine — koristi bilo gde
+async function triggerEngine(athleteId) {
+  if (!athleteId) return [];
+  try {
+    const [reelsCnt, salesCnt, lessonsTotal, lessonsCompleted, reelsDates] = await Promise.all([
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athleteId).eq('status','approved'),
+      supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athleteId).eq('status','confirmed'),
+      supa.from('course_lessons').select('id',{count:'exact', head:true}),
+      supa.from('lesson_progress').select('id',{count:'exact', head:true}).eq('athlete_id', athleteId).eq('completed', true),
+      supa.from('reels').select('submitted_at').eq('athlete_id', athleteId).eq('status','approved').limit(120)
+    ]);
+    const dSet = new Set((reelsDates.data||[]).map(r => (r.submitted_at||'').slice(0,10)));
+    let streak = 0; const today = new Date();
+    for (let i=0; i<365; i++) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
+      if (dSet.has(d.toISOString().slice(0,10))) streak++; else if (i > 0) break;
+    }
+    return await runAchievementEngine(athleteId, {
+      reels_total: reelsCnt.count || 0,
+      sales_total: salesCnt.count || 0,
+      streak,
+      course_lessons_total: lessonsTotal.count || 0,
+      course_lessons_completed: lessonsCompleted.count || 0
+    });
+  } catch(e) { console.warn('triggerEngine fail:', e); return []; }
+}
+
 async function runAchievementEngine(athleteId, snapshot) {
   // snapshot: { reels_total, sales_total, streak, course_lessons_completed, course_lessons_total }
   const [{ data: allAch }, { data: unlocked }] = await Promise.all([
@@ -1729,16 +1756,36 @@ function KursPage({ athlete }) {
 
   async function markComplete(lessonId) {
     if (!athlete?.id) return;
+    // KRITICNO: postavi completed=true da achievement engine prepoznaje lekciju kao zavrsenu
     await supa.from('lesson_progress').upsert({
-      athlete_id: athlete.id, lesson_id: lessonId, completed_at: new Date().toISOString()
+      athlete_id: athlete.id, lesson_id: lessonId,
+      completed: true, completed_at: new Date().toISOString()
     }, { onConflict: 'athlete_id,lesson_id' });
+
+    // +5 BODOVA za zavrsenu lekciju
+    await supa.from('xp_ledger').insert({
+      athlete_id: athlete.id, amount: 5, source: 'lesson',
+      description: 'Završena lekcija +5 BODOVA'
+    });
+
     setProgress(p => ({ ...p, [lessonId]: true }));
+
+    // Pokreni achievement engine — ako otkljuca dostignuce, prikazi alert + push
+    const unlocked = await triggerEngine(athlete.id);
+    if (unlocked && unlocked.length) {
+      alert(`🏆 Otključao si dostignuće: "${unlocked[0].name}" (+${unlocked[0].xp_reward} BODOVA)`);
+    }
   }
 
   async function markIncomplete(lessonId) {
     if (!athlete?.id) return;
     await supa.from('lesson_progress').delete()
       .eq('athlete_id', athlete.id).eq('lesson_id', lessonId);
+    // Skini 5 bodova
+    await supa.from('xp_ledger').insert({
+      athlete_id: athlete.id, amount: -5, source: 'lesson',
+      description: 'Otkazana lekcija -5 BODOVA'
+    });
     setProgress(p => { const n = {...p}; delete n[lessonId]; return n; });
   }
 
@@ -1979,7 +2026,7 @@ function BodoviConvertCard({ athleteId, onConverted }) {
         </button>
       ) : (
         <div className="p-3 rounded-xl bg-bg0/40 text-xs text-white/50 text-center">
-          Treba ti 10.000 BODOVA za prvi €5 bonus. Reels = 10 BODOVA, prodaja = 50 BODOVA, dostignuća daju puno.
+          Treba ti 10.000 BODOVA za prvi €5 bonus. Reel = 10, prodaja = 50, lekcija = 5, dostignuća 20–75000.
         </div>
       )}
 
@@ -3137,6 +3184,8 @@ function AdminReelsQueue() {
         description: 'Odobren reel +10 BODOVA'
       });
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
+      // Pokreni achievement engine — moze otkljucati reels/streak dostignuca
+      await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected') {
       await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
     }
@@ -3470,7 +3519,13 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
         athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
         ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
       });
+      // Dodaj +10 BODOVA (mogli su biti zaboravljeni u ovom code path-u)
+      await supa.from('xp_ledger').insert({
+        athlete_id: reel.athlete_id, amount: 10, source: 'reel',
+        description: 'Odobren reel +10 BODOVA'
+      });
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
+      await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected' && reel) {
       await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
     }
@@ -5468,12 +5523,23 @@ function AdminReelsQueueLarge() {
         });
         if (earnErr) throw new Error('Earnings insert fail: ' + earnErr.message);
 
-        // KORAK 4: Posalji notifikaciju (ne baci ako fali — vec smo upisali earnings)
+        // KORAK 4: BODOVI +10
+        try {
+          await supa.from('xp_ledger').insert({
+            athlete_id: reel.athlete_id, amount: 10, source: 'reel',
+            description: 'Odobren reel +10 BODOVA'
+          });
+        } catch(e) { console.warn('xp insert failed:', e); }
+
+        // KORAK 5: Posalji notifikaciju (ne baci ako fali — vec smo upisali earnings)
         try {
           await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
         } catch(e) { console.warn('Notif failed:', e); }
 
-        setFlash({ type:'ok', text:`✅ ODOBRENO + €${(reward/100).toFixed(2)} za atletu.` });
+        // KORAK 6: Achievement engine
+        try { await triggerEngine(reel.athlete_id); } catch(e) { console.warn('engine failed:', e); }
+
+        setFlash({ type:'ok', text:`✅ ODOBRENO + €${(reward/100).toFixed(2)} + 10 BODOVA.` });
       } else if (status === 'rejected') {
         try {
           await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
