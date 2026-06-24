@@ -2460,10 +2460,12 @@ function NotificationPreferences({ athlete, refreshProfile }) {
       if (error) { alert('Greška iz edge funkcije: ' + error.message); return; }
       const sent = data?.sent || 0;
       const total = data?.total || 0;
+      const errArr = data?.errors || [];
       if (sent === 0 && total === 0) {
         alert('⚠️ Nema subscription-a u bazi. Prvo klikni "Uključi" → zatim "Test push".');
       } else if (sent === 0) {
-        alert('⚠️ Subscription postoji ali push nije poslat. Pogledaj Edge Function logs.\n\nTotal: ' + total + ', Sent: ' + sent);
+        const errTxt = errArr.length ? '\n\nGreske:\n' + errArr.join('\n\n') : '\n\n(nema detaljnih greska)';
+        alert('⚠️ Push nije isporucen.\n\nTotal: ' + total + ', Sent: ' + sent + errTxt);
       } else {
         alert('✅ Poslato! Push treba da iskoči za 5-10 sekundi.\n\nSent: ' + sent + ' / ' + total);
       }
