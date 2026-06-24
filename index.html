@@ -2409,36 +2409,52 @@ function NotificationPreferences({ athlete, refreshProfile }) {
       const reg = await navigator.serviceWorker.ready;
       console.log('[VAMIT-PUSH] SW ready, scope:', reg.scope);
 
-      // 3. KLJUCNO: brisi SVE atletino subs iz baze + browser-a da nema duplikata
-      //    Razlog: stare SW verzije + novi subscribe = 2 entries u DB → 2x push
+      // 3. Cisti SVE atletino subs iz baze (sprecava duplikate)
       try {
-        await supa.from('push_subscriptions').delete().eq('athlete_id', athlete.id);
-        console.log('[VAMIT-PUSH] Cleared ALL old DB subs for athlete');
+        const { error: delErr } = await supa.from('push_subscriptions').delete().eq('athlete_id', athlete.id);
+        if (delErr) console.warn('[VAMIT-PUSH] clear DB warn:', delErr);
+        else console.log('[VAMIT-PUSH] Cleared old DB subs');
       } catch(e){ console.warn('clear db subs fail:', e); }
+
+      // 4. Cisti browser sub
       let sub = await reg.pushManager.getSubscription();
       if (sub) {
-        console.log('[VAMIT-PUSH] Unsubscribing old browser sub');
-        try { await sub.unsubscribe(); } catch(e){}
+        console.log('[VAMIT-PUSH] Unsub old browser sub');
+        try { await sub.unsubscribe(); } catch(e){ console.warn(e); }
       }
 
-      // 4. Kreiraj sveze subscription
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
+      // 5. Kreiraj sveze subscription
+      try {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      } catch(subErr) {
+        console.error('[VAMIT-PUSH] subscribe FAIL:', subErr);
+        alert('❌ pushManager.subscribe pukao:\n' + subErr.message + '\n\nProveri da je VAPID kljuc validan.');
+        return;
+      }
       console.log('[VAMIT-PUSH] Fresh sub:', sub.endpoint);
 
-      // 5. Sacuvaj jedan red u DB
+      // 6. Sacuvaj UPSERT (siguran nacin — ako endpoint vec postoji, update-uj)
       const subJson = sub.toJSON();
-      const { error } = await supa.from('push_subscriptions').insert({
+      const { error: saveErr } = await supa.from('push_subscriptions').upsert({
         athlete_id: athlete.id,
         endpoint: sub.endpoint,
         p256dh: subJson.keys?.p256dh || '',
         auth: subJson.keys?.auth || '',
         user_agent: navigator.userAgent,
         last_seen_at: new Date().toISOString()
-      });
-      if (error) { console.error('[VAMIT-PUSH] save sub error:', error); alert('Greška pri snimanju: ' + error.message); return; }
+      }, { onConflict: 'endpoint' });
+      if (saveErr) {
+        console.error('[VAMIT-PUSH] save sub error:', saveErr);
+        alert('❌ Greska pri snimanju subscription-a:\n' + saveErr.message + '\n\nKod: ' + (saveErr.code || 'n/a'));
+        return;
+      }
+
+      // 7. Verifikuj da je u bazi
+      const { data: check } = await supa.from('push_subscriptions').select('id').eq('athlete_id', athlete.id);
+      console.log('[VAMIT-PUSH] DB subs after save:', check?.length || 0);
 
       console.log('[VAMIT-PUSH] Saved sub for athlete:', athlete.id);
       alert('✅ Push notifikacije UKLJUČENE!\n\nKlikni "Test push" da proveris da li stize na telefon.');
