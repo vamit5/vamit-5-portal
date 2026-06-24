@@ -1,14 +1,15 @@
-// VAMIT-5 Portal Service Worker v6 — push bulletproof iOS + Android
-const VERSION = 'vamit5-v6';
-const LOGO_URL = 'https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_192,h_192,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg';
+// VAMIT-5 Portal Service Worker v7 — fix Android logo + brand prefix
+const VERSION = 'vamit5-v7';
+// Direktan JPG URL bez Cloudinary transforms (uvek dostupan)
+const LOGO_URL = 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg';
 
 self.addEventListener('install', (e) => {
-  console.log('[SW] install v6');
+  console.log('[SW] install v7');
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
-  console.log('[SW] activate v6');
+  console.log('[SW] activate v7');
   e.waitUntil(Promise.all([
     self.clients.claim(),
     caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
@@ -31,16 +32,15 @@ self.addEventListener('fetch', (e) => {
 });
 
 // ============================================================
-// PUSH NOTIFICATIONS — iOS + Android compatible
+// PUSH NOTIFICATIONS — iOS + Android, sa brand prefix + logo
 // ============================================================
 self.addEventListener('push', (e) => {
-  console.log('[SW] push event, hasData:', !!e.data);
+  console.log('[SW] push event');
 
   let data = {};
   try {
     if (e.data) {
       const txt = e.data.text();
-      console.log('[SW] push raw:', txt);
       try { data = JSON.parse(txt); } catch { data = { title: 'VAMIT-5', body: txt }; }
     }
   } catch (err) {
@@ -48,12 +48,16 @@ self.addEventListener('push', (e) => {
     data = { title: 'VAMIT-5', body: 'Nova aktivnost' };
   }
 
-  const title = data.title || 'VAMIT-5';
-  // iOS PWA notifications require: title + body + tag + at minimum icon
+  // Brand prefix u title-u tako da atleta zna od koga je notifikacija
+  const rawTitle = data.title || 'Notifikacija';
+  const title = rawTitle.startsWith('VAMIT-5') ? rawTitle : 'VAMIT-5 · ' + rawTitle;
+
+  // VAZNO: NE postavljamo 'badge' jer Android trazi monochrome 24x24 PNG;
+  // bilo koja druga slika se prikazuje kao bela kutija. Ako ga ne postavimo,
+  // Android koristi 'icon' kao fallback.
   const options = {
     body: data.body || '',
     icon: LOGO_URL,
-    badge: LOGO_URL,
     tag: data.tag || 'vamit5-' + Date.now(),
     data: { url: data.action_url || '/#/dashboard' },
     vibrate: [200, 100, 200],
@@ -78,7 +82,7 @@ self.addEventListener('notificationclick', (e) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
       for (const c of clients) {
         if (c.url.includes(self.registration.scope) && 'focus' in c) {
-          try { c.navigate(url); } catch(e){}
+          try { c.navigate(url); } catch (e) {}
           return c.focus();
         }
       }
@@ -87,8 +91,6 @@ self.addEventListener('notificationclick', (e) => {
   );
 });
 
-// Resubscribe ako push subscription istekne (Chrome+Android)
 self.addEventListener('pushsubscriptionchange', (e) => {
   console.log('[SW] pushsubscriptionchange');
-  // Browser ce auto resubscribe-ovati u nekim slucajevima
 });
