@@ -1,7 +1,6 @@
-// VAMIT-5 Portal Service Worker v7 — fix Android logo + brand prefix
-const VERSION = 'vamit5-v7';
-// Direktan JPG URL bez Cloudinary transforms (uvek dostupan)
-const LOGO_URL = 'https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg';
+// VAMIT-5 Portal Service Worker v9 — force cache bust posle promene logo-a
+const VERSION = 'vamit5-v9';
+const LOGO_URL = '/vamit5-icon.svg?v=9';
 
 self.addEventListener('install', (e) => {
   console.log('[SW] install v7');
