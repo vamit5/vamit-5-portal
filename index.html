@@ -4758,16 +4758,30 @@ async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
       tpl = { title_tpl: fb.title, body_tpl: fb.body, icon: fb.icon, default_priority: fb.priority };
     }
 
-    const { error } = await supa.from('notifications').insert({
+    const title = interpolate(tpl.title_tpl);
+    const body  = interpolate(tpl.body_tpl);
+    const icon  = tpl.icon || '🔔';
+    const priority = tpl.default_priority || 'normal';
+
+    const { data: newNotif, error } = await supa.from('notifications').insert({
       athlete_id: athleteId,
       type: key,
-      title: interpolate(tpl.title_tpl),
-      body: interpolate(tpl.body_tpl),
-      icon: tpl.icon || '🔔',
-      priority: tpl.default_priority || 'normal',
+      title, body, icon, priority,
       action_url: actionUrl,
-    });
-    if (error) console.error('Notif insert greška:', error);
+    }).select().single();
+    if (error) { console.error('Notif insert greška:', error); return; }
+
+    // Pozovi send-push edge funkciju da poslje push na telefon (kad PWA zatvorena)
+    try {
+      await supa.functions.invoke('send-push', {
+        body: {
+          athlete_id: athleteId,
+          title, body, icon, action_url: actionUrl, priority
+        }
+      });
+    } catch(pushErr) {
+      console.warn('send-push invoke fail (non-blocking):', pushErr);
+    }
   } catch(e) { console.error('sendTemplated err:', e); }
 }
 
