@@ -5400,7 +5400,7 @@ function App() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       // Registruj sa updateViaCache 'none' da uvek povuce nov sw.js
-      navigator.serviceWorker.register('/sw.js?v=6', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('/sw.js?v=7', { updateViaCache: 'none' })
         .then(reg => { reg.update(); })
         .catch(err => console.log('SW reg failed:', err));
     }
