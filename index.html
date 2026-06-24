@@ -226,6 +226,9 @@ function useAuth() {
   return { user, profile, athlete, loading, refreshProfile };
 }
 
+// === VAPID public key — hardkodiran da ne zavisimo od settings query (eliminise jedan failure point)
+const VAPID_PUBLIC_KEY = 'BM0JuYJD_UJ5M8t8ryPdwxRP1-bl6feXC4EEIF4szWKLz9-Xgz96t4aLlpC6IfJ6e3lPnxjSuVPKJ4MqQPPvmBg';
+
 // === UTILS ===
 const formatEUR = (cents) => '€' + ((cents||0)/100).toFixed(2);
 // Parsira string sa zarezom ili tackom — '0,35' i '0.35' oba postaju 0.35
@@ -1070,8 +1073,10 @@ function Dashboard({ athlete, profile }) {
     const allPayouts = paidPayouts.data || [];
     const totalPayoutsCommitted = allPayouts.reduce((s,x)=>s+x.amount_cents,0);
     const realBalance = Math.max(0, earnLifetime - totalPayoutsCommitted);
-    // "Na cekanju" = isplate koje admin jos uvek nije izvrsio (pending + approved zahtevi)
+    // "Na cekanju" = predikcija zarade od reels-ova koje admin jos nije odobrio + payout zahtevi
+    const reelsPendingReward = (r3.count||0) * (lc.data?.reel_reward_cents || 25);
     const pendingPayoutsTotal = allPayouts.filter(p => p.status === 'pending' || p.status === 'approved').reduce((s,x)=>s+x.amount_cents,0);
+    const totalPending = reelsPendingReward + pendingPayoutsTotal;
     const totalBodovi = (xpRows.data||[]).reduce((s,x)=>s+(x.amount||0),0);
 
     // === STREAK CALC ===
@@ -1094,7 +1099,7 @@ function Dashboard({ athlete, profile }) {
       reels_pending: r3.count||0,
       sales_total: salesTotal,
       sales_month: sm.count||0,
-      earnings_pending: pendingPayoutsTotal,
+      earnings_pending: totalPending,
       earnings_available: realBalance,
       earnings_lifetime: earnLifetime,
       streak,
@@ -2374,46 +2379,51 @@ function NotificationPreferences({ athlete, refreshProfile }) {
     if (refreshProfile) refreshProfile(athlete.id);
   }
 
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+
   async function requestBrowserPush() {
+    console.log('[VAMIT-PUSH] Start subscribe...');
     if (typeof Notification === 'undefined') { alert('Browser ne podržava push notifikacije.'); return; }
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('Push API nije podržan na ovom uređaju. Probaj iz instalirane PWA aplikacije.');
+      alert('Push API nije podržan na ovom uređaju.\n\nNa iPhone-u: instaliraj VAMIT-5 sa "Add to Home Screen" pa otvori PWA (iOS 16.4+).');
       return;
     }
     try {
+      // 1. Trazi dozvolu
       const result = await Notification.requestPermission();
+      console.log('[VAMIT-PUSH] Permission:', result);
       setBrowserGranted(result === 'granted');
-      if (result !== 'granted') return;
-
-      // 1. VAPID public key iz settings (admin postavlja)
-      const { data: vapidRow } = await supa.from('settings').select('value').eq('key', 'vapid_public_key').maybeSingle();
-      const vapidPublicKey = vapidRow?.value;
-      if (!vapidPublicKey) {
-        alert('⚠️ VAPID kljuc nije postavljen u admin podesavanjima. Push nece raditi dok admin to ne uradi.');
+      if (result !== 'granted') {
+        alert('Dozvolio si NE dozvolu. Da prebroju: Settings → Apps → Browser → Notifications → Allow.');
         return;
       }
 
-      // 2. Konvertuj base64 url-safe → Uint8Array (potrebno za applicationServerKey)
-      function urlBase64ToUint8Array(base64String) {
-        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-        const raw = atob(base64);
-        const arr = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-        return arr;
-      }
-
-      // 3. Subscribe via service worker
+      // 2. Cekaj SW
       const reg = await navigator.serviceWorker.ready;
+      console.log('[VAMIT-PUSH] SW ready, scope:', reg.scope);
+
+      // 3. Cisti staru subscription pa kreiraj novu
       let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-        });
+      if (sub) {
+        console.log('[VAMIT-PUSH] Old sub, removing:', sub.endpoint);
+        await sub.unsubscribe();
+        try { await supa.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); } catch(e){}
       }
 
-      // 4. Sacuvaj subscription u DB
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      console.log('[VAMIT-PUSH] New sub created:', sub.endpoint);
+
+      // 4. Sacuvaj u DB
       const subJson = sub.toJSON();
       const { error } = await supa.from('push_subscriptions').upsert({
         athlete_id: athlete.id,
@@ -2423,12 +2433,43 @@ function NotificationPreferences({ athlete, refreshProfile }) {
         user_agent: navigator.userAgent,
         last_seen_at: new Date().toISOString()
       }, { onConflict: 'endpoint' });
-      if (error) { console.error('save push sub:', error); alert('Greška pri snimanju: ' + error.message); return; }
+      if (error) { console.error('[VAMIT-PUSH] save sub error:', error); alert('Greška pri snimanju: ' + error.message); return; }
 
-      alert('✅ Push notifikacije UKLJUČENE!\n\nDobijaćeš obaveštenja na telefon čak i kada portal nije otvoren.');
+      console.log('[VAMIT-PUSH] Saved sub for athlete:', athlete.id);
+      alert('✅ Push notifikacije UKLJUČENE!\n\nKlikni "Test push" da proveris da li stize na telefon.');
     } catch(e) {
-      console.error('Push error:', e);
-      alert('Greška pri uključivanju: ' + e.message);
+      console.error('[VAMIT-PUSH] Subscribe error:', e);
+      alert('Greška: ' + e.message + '\n\nPogledaj Console (F12) za detalje.');
+    }
+  }
+
+  async function sendTestPush() {
+    console.log('[VAMIT-PUSH] Send test push...');
+    try {
+      const { data, error } = await supa.functions.invoke('send-push', {
+        body: {
+          athlete_id: athlete.id,
+          title: '🧪 Test notifikacija',
+          body: 'Ako vidiš ovo na telefonu — sve radi. Probaj da zatvoris PWA, pa ponovo testira.',
+          icon: '🚀',
+          action_url: '#/dashboard',
+          priority: 'high'
+        }
+      });
+      console.log('[VAMIT-PUSH] Edge response:', data, error);
+      if (error) { alert('Greška iz edge funkcije: ' + error.message); return; }
+      const sent = data?.sent || 0;
+      const total = data?.total || 0;
+      if (sent === 0 && total === 0) {
+        alert('⚠️ Nema subscription-a u bazi. Prvo klikni "Uključi" → zatim "Test push".');
+      } else if (sent === 0) {
+        alert('⚠️ Subscription postoji ali push nije poslat. Pogledaj Edge Function logs.\n\nTotal: ' + total + ', Sent: ' + sent);
+      } else {
+        alert('✅ Poslato! Push treba da iskoči za 5-10 sekundi.\n\nSent: ' + sent + ' / ' + total);
+      }
+    } catch(e) {
+      console.error('[VAMIT-PUSH] Test push error:', e);
+      alert('Greška: ' + e.message);
     }
   }
 
@@ -2471,6 +2512,12 @@ function NotificationPreferences({ athlete, refreshProfile }) {
             <button onClick={requestBrowserPush} className="px-4 py-2 rounded-lg bg-brand text-bg0 text-xs font-bold shrink-0">Uključi</button>
           )}
         </div>
+        {browserGranted && (
+          <button onClick={sendTestPush}
+            className="mt-3 w-full py-2 rounded-lg bg-gradient-to-r from-brand to-brand2 text-bg0 text-xs font-extrabold">
+            🧪 Pošalji test push
+          </button>
+        )}
       </div>
 
       {/* Per-type toggles */}
@@ -5351,7 +5398,7 @@ function App() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       // Registruj sa updateViaCache 'none' da uvek povuce nov sw.js
-      navigator.serviceWorker.register('/sw.js?v=5', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('/sw.js?v=6', { updateViaCache: 'none' })
         .then(reg => { reg.update(); })
         .catch(err => console.log('SW reg failed:', err));
     }
