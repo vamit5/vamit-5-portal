@@ -10,8 +10,8 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="application-name" content="VAMIT-5 Portal" />
 <title>VAMIT-5 Athlete Portal</title>
-<link rel="icon" type="image/jpeg" href="https://res.cloudinary.com/dqqljgtna/image/upload/v1778337005/VAMIT-5_k3xlfh.jpg" />
-<link rel="apple-touch-icon" sizes="180x180" href="https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_180,h_180,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg" />
+<link rel="icon" type="image/svg+xml" href="/vamit5-icon.svg?v=9" />
+<link rel="apple-touch-icon" sizes="180x180" href="/vamit5-icon.svg?v=9" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,7 +88,7 @@ const supa = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_A
   auth: { flowType:'implicit', detectSessionInUrl:true, persistSession:true, autoRefreshToken:true }
 });
 
-const LOGO = "https://res.cloudinary.com/dqqljgtna/image/upload/v1778767942/VAMIT-5-removebg-preview_2_uvii77.png";
+const LOGO = "/vamit5-icon.svg";
 const FORM_URL = "https://vamit-5-2.getrewardful.com/signup";
 
 const LEVEL_THEME = {
@@ -275,11 +275,39 @@ const fromNow = (d) => {
 // =====================================================================
 // COMPONENTS
 // =====================================================================
+// Inline SVG ikona — nema fetch, nema cache. Promene su odmah vidljive.
+function VamitMark({ size = 36 }) {
+  return (
+    <svg viewBox="0 0 512 512" width={size} height={size} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="vmBg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#1a1a1a"/><stop offset="100%" stopColor="#000000"/>
+        </linearGradient>
+        <linearGradient id="vmTxt" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff"/><stop offset="100%" stopColor="#d4d4d4"/>
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="100" fill="url(#vmBg)"/>
+      <rect x="24" y="24" width="464" height="464" rx="78" fill="none" stroke="#ffffff" strokeWidth="1" opacity="0.06"/>
+      <line x1="100" y1="178" x2="412" y2="178" stroke="#ffffff" strokeWidth="3" opacity="0.35"/>
+      <text x="256" y="262" textAnchor="middle" dominantBaseline="central"
+        fontFamily="Impact, Arial Black, Helvetica Neue, sans-serif" fontWeight="900"
+        fontSize="118" fill="url(#vmTxt)" letterSpacing="-2">VAMIT-5</text>
+      <line x1="100" y1="345" x2="412" y2="345" stroke="#ffffff" strokeWidth="3" opacity="0.35"/>
+      <text x="256" y="395" textAnchor="middle"
+        fontFamily="Arial, Helvetica Neue, sans-serif" fontWeight="500"
+        fontSize="22" fill="#ffffff" letterSpacing="13" opacity="0.6">ATHLETE PORTAL</text>
+      <line x1="60" y1="430" x2="60" y2="462" stroke="#ffffff" strokeWidth="3" opacity="0.3"/>
+      <line x1="452" y1="430" x2="452" y2="462" stroke="#ffffff" strokeWidth="3" opacity="0.3"/>
+    </svg>
+  );
+}
+
 function Logo({size='md'}) {
-  const s = size==='lg' ? 'w-12 h-12' : 'w-9 h-9';
+  const pixelSize = size === 'lg' ? 48 : 36;
   return (
     <a href="#/" className="flex items-center gap-2 group">
-      <img src={LOGO} alt="VAMIT-5" className={s + " object-contain"} />
+      <VamitMark size={pixelSize}/>
       <div>
         <div className="font-black text-sm sm:text-base leading-tight">VAMIT-5</div>
         <div className="text-[9px] sm:text-[10px] tracking-[0.18em] text-white/50 uppercase font-bold">Athlete Portal</div>
@@ -1444,28 +1472,46 @@ async function triggerEngine(athleteId) {
 }
 
 async function runAchievementEngine(athleteId, snapshot) {
-  // snapshot: { reels_total, sales_total, streak, course_lessons_completed, course_lessons_total }
-  const [{ data: allAch }, { data: unlocked }] = await Promise.all([
-    supa.from('achievements').select('*').eq('active', true),
-    supa.from('athlete_achievements').select('achievement_id').eq('athlete_id', athleteId)
-  ]);
+  console.log('[ACH] Engine start', athleteId, snapshot);
+  const { data: allAch, error: e1 } = await supa.from('achievements').select('*').eq('active', true);
+  const { data: unlocked, error: e2 } = await supa.from('athlete_achievements').select('achievement_id').eq('athlete_id', athleteId);
+  if (e1) console.error('[ACH] achievements fetch err:', e1);
+  if (e2) console.error('[ACH] unlocked fetch err:', e2);
+  console.log('[ACH] Active achievements:', (allAch||[]).length, '| Already unlocked:', (unlocked||[]).length);
+
   const unlockedSet = new Set((unlocked||[]).map(x => x.achievement_id));
   const newlyUnlocked = [];
   for (const ach of (allAch||[])) {
     if (unlockedSet.has(ach.id)) continue;
-    // STRICT: samo ako requirement_json postoji I vraca true sa REAL podacima
-    if (!ach.requirement_json) continue;
-    if (!matchesRequirement(ach.requirement_json, snapshot)) continue;
+    if (!ach.requirement_json) { continue; }
+    const matched = matchesRequirement(ach.requirement_json, snapshot);
+    if (!matched) continue;
 
-    const { error } = await supa.from('athlete_achievements').insert({ athlete_id: athleteId, achievement_id: ach.id, unlocked_at: new Date().toISOString() });
-    if (!error) {
-      newlyUnlocked.push(ach);
-      if (ach.xp_reward) {
-        await supa.from('xp_ledger').insert({ athlete_id: athleteId, amount: ach.xp_reward, source: 'achievement', description: 'Dostignuće: ' + ach.name });
-      }
-      await sendTemplated(athleteId, 'achievement', { name: ach.name, xp: ach.xp_reward||0 }, '#/dostignuca');
+    console.log('[ACH] MATCH!', ach.code, ach.name, ach.requirement_json);
+
+    const { error: insErr } = await supa.from('athlete_achievements').insert({
+      athlete_id: athleteId, achievement_id: ach.id, unlocked_at: new Date().toISOString()
+    });
+    if (insErr) {
+      console.error('[ACH] insert FAIL for', ach.code, ':', insErr);
+      continue;
     }
+    console.log('[ACH] inserted athlete_achievement for', ach.code);
+    newlyUnlocked.push(ach);
+
+    if (ach.xp_reward) {
+      const { error: xpErr } = await supa.from('xp_ledger').insert({
+        athlete_id: athleteId, amount: ach.xp_reward, source: 'achievement',
+        description: 'Dostignuće: ' + ach.name
+      });
+      if (xpErr) console.error('[ACH] xp insert FAIL:', xpErr);
+    }
+    try {
+      await sendTemplated(athleteId, 'achievement', { name: ach.name, xp: ach.xp_reward||0 }, '#/dostignuca');
+      console.log('[ACH] notif sent for', ach.code);
+    } catch(e) { console.error('[ACH] notif fail:', e); }
   }
+  console.log('[ACH] Engine done. Newly unlocked:', newlyUnlocked.length);
   return newlyUnlocked;
 }
 
@@ -5766,7 +5812,7 @@ function App() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       // Registruj sa updateViaCache 'none' da uvek povuce nov sw.js
-      navigator.serviceWorker.register('/sw.js?v=7', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('/sw.js?v=9', { updateViaCache: 'none' })
         .then(reg => { reg.update(); })
         .catch(err => console.log('SW reg failed:', err));
     }
