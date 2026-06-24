@@ -229,6 +229,31 @@ function useAuth() {
 // === VAPID public key — hardkodiran da ne zavisimo od settings query (eliminise jedan failure point)
 const VAPID_PUBLIC_KEY = 'BM0JuYJD_UJ5M8t8ryPdwxRP1-bl6feXC4EEIF4szWKLz9-Xgz96t4aLlpC6IfJ6e3lPnxjSuVPKJ4MqQPPvmBg';
 
+// === PORTAL CMS — globalni text cache + t() helper
+// Tekstovi se snimaju u public.settings tabelu pod kljucevima portal_*
+// Portal komponente koriste t('key', 'fallback') da povuku tekst
+window.__PORTAL_TEXTS__ = window.__PORTAL_TEXTS__ || {};
+function t(key, fallback) {
+  const v = window.__PORTAL_TEXTS__[key];
+  if (v === undefined || v === null || v === '') return fallback || '';
+  return v;
+}
+async function loadPortalTexts() {
+  try {
+    const { data } = await supa.from('settings').select('key, value').like('key', 'portal_%');
+    const map = {};
+    (data || []).forEach(r => {
+      let v = r.value;
+      if (typeof v === 'object' && v !== null && 'v' in v) v = v.v;
+      if (typeof v === 'string') map[r.key] = v;
+      else if (v !== null && v !== undefined) map[r.key] = String(v);
+    });
+    window.__PORTAL_TEXTS__ = map;
+    console.log('[VAMIT] Loaded', Object.keys(map).length, 'portal texts');
+    window.dispatchEvent(new Event('portal-texts-loaded'));
+  } catch(e) { console.warn('loadPortalTexts fail:', e); }
+}
+
 // === UTILS ===
 const formatEUR = (cents) => '€' + ((cents||0)/100).toFixed(2);
 // Parsira string sa zarezom ili tackom — '0,35' i '0.35' oba postaju 0.35
@@ -1030,8 +1055,8 @@ function MyTeam({ athlete }) {
     <div className="glass rounded-2xl p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
         <div>
-          <div className="font-display font-black text-lg">👥 Moj Tim</div>
-          <div className="text-xs text-white/60">15% provizije od prodaja tvog tima — doživotno</div>
+          <div className="font-display font-black text-lg">{t('portal_dash_team_title','👥 Moj Tim')}</div>
+          <div className="text-xs text-white/60">{t('portal_dash_team_subtitle','15% provizije od prodaja tvog tima — doživotno')}</div>
         </div>
         <div className="text-right">
           <div className="font-display font-black text-2xl text-brand">{members.length}</div>
@@ -1052,7 +1077,7 @@ function MyTeam({ athlete }) {
 
       {/* INVITE LINK — atleta deli ovaj link, ko se uloguje preko njega → automatski u njegovom timu */}
       <div className="p-3 rounded-xl bg-brand/5 border border-brand/30 mb-3">
-        <div className="text-[10px] uppercase tracking-wider text-brand font-bold mb-1.5">📨 Tvoj invite link (deli sa prijateljima)</div>
+        <div className="text-[10px] uppercase tracking-wider text-brand font-bold mb-1.5">{t('portal_dash_team_invite_label','📨 Tvoj invite link (deli sa prijateljima)')}</div>
         <div className="flex items-center gap-2">
           <code className="flex-1 text-[10px] sm:text-xs text-brand break-all">{inviteLink}</code>
           <button onClick={copyInvite} className="shrink-0 px-2.5 py-1.5 rounded-lg bg-brand text-bg0 text-[10px] font-bold whitespace-nowrap">
@@ -1328,9 +1353,9 @@ function Dashboard({ athlete, profile }) {
 
       {/* EARNINGS */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <StatCard label="Dostupno" value={formatEUR(stats.earnings_available)} accent="lime" emoji="💰"/>
-        <StatCard label="Na čekanju" value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
-        <StatCard label="Ukupna zarada" value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
+        <StatCard label={t('portal_dash_stat_available','Dostupno')} value={formatEUR(stats.earnings_available)} accent="lime" emoji="💰"/>
+        <StatCard label={t('portal_dash_stat_pending','Na čekanju')} value={formatEUR(stats.earnings_pending)} accent="gold" emoji="⏳"/>
+        <StatCard label={t('portal_dash_stat_lifetime','Ukupna zarada')} value={formatEUR(stats.earnings_lifetime)} accent="brand" emoji="💎"/>
       </div>
 
       {/* BODOVI BONUS — 10.000 BODOVA = €5 */}
@@ -1344,10 +1369,10 @@ function Dashboard({ athlete, profile }) {
 
       {/* QUICK ACTIONS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <QuickAction href="#/reels" emoji="🎬" label="Dodaj Reel" color={theme.color}/>
-        <QuickAction href="#/kurs" emoji="📚" label="Otvori Kurs" color="#00f0ff"/>
-        <QuickAction href="#/dostignuca" emoji="🏆" label="Dostignuća" color="#ffc24b"/>
-        <QuickAction href="#/rang" emoji="📊" label="Rang Lista" color="#a855f7"/>
+        <QuickAction href="#/reels" emoji="🎬" label={t('portal_qa_add_reel','Dodaj Reel')} color={theme.color}/>
+        <QuickAction href="#/kurs" emoji="📚" label={t('portal_qa_kurs','Otvori Kurs')} color="#00f0ff"/>
+        <QuickAction href="#/dostignuca" emoji="🏆" label={t('portal_qa_dostignuca','Dostignuća')} color="#ffc24b"/>
+        <QuickAction href="#/rang" emoji="📊" label={t('portal_qa_rang','Rang Lista')} color="#a855f7"/>
       </div>
 
       {/* OVERVIEW STATS */}
@@ -1570,8 +1595,8 @@ function ReelsPage({ athlete, profile }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🎬 Moji Reels</h1>
-        <p className="text-sm text-white/60">Postavi Instagram Reel URL — admin proverava i ti zarađuješ.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_reels_title','🎬 Moji Reels')}</h1>
+        <p className="text-sm text-white/60">{t('portal_reels_intro','Postavi Instagram Reel URL — admin proverava i ti zarađuješ.')}</p>
       </div>
 
       <div className="glass-strong rounded-2xl p-5 sm:p-6">
@@ -1727,7 +1752,7 @@ function KursPage({ athlete }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">📚 Athlete Kurs</h1>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_kurs_title','📚 Athlete Kurs')}</h1>
         <p className="text-sm text-white/60">{modules.length} modula · {totalLessons} lekcija · {doneLessons} završeno ({overallPct}%)</p>
       </div>
 
@@ -1871,6 +1896,100 @@ function KursPage({ athlete }) {
 }
 
 // === ISPLATE ===
+// === BODOVI → €5 KONVERZIJA ===
+function BodoviConvertCard({ athleteId, onConverted }) {
+  const [bodovi, setBodovi] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => { if (athleteId) load(); }, [athleteId]);
+  async function load() {
+    const { data } = await supa.from('xp_ledger').select('amount').eq('athlete_id', athleteId);
+    setBodovi((data || []).reduce((s,x)=>s+(x.amount||0), 0));
+  }
+
+  const bonusCount = Math.floor(bodovi / 10000);
+  const canConvert = bonusCount > 0;
+  const nextTier = bodovi % 10000;
+  const toGo = 10000 - nextTier;
+
+  async function convert() {
+    if (!canConvert || busy) return;
+    if (!confirm(`Konvertuj 10.000 BODOVA u €5 bonus?\n\nBonus će biti dodat u "Prodaja paketa" bucket — možeš ga odmah povući.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      // 1. Skini 10000 bodova
+      const { error: xpErr } = await supa.from('xp_ledger').insert({
+        athlete_id: athleteId,
+        amount: -10000,
+        source: 'bonus',
+        description: 'Konvercija 10.000 BODOVA → €5 bonus'
+      });
+      if (xpErr) throw xpErr;
+
+      // 2. Dodaj €5 u sales bucket
+      const { error: earnErr } = await supa.from('earnings_ledger').insert({
+        athlete_id: athleteId,
+        source: 'sale',
+        amount_cents: 500,
+        status: 'available',
+        available_at: new Date().toISOString(),
+        description: '🎁 BODOVI bonus (10.000 → €5)'
+      });
+      if (earnErr) throw earnErr;
+
+      setMsg({ type:'ok', text:'✅ €5 dodato u Prodaja bucket — možeš odmah da zatražiš isplatu!' });
+      await load();
+      if (onConverted) onConverted();
+    } catch(e) {
+      setMsg({ type:'err', text:'Greska: ' + (e.message || e) });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="glass-strong rounded-3xl p-5 sm:p-6 border border-brand3/30"
+      style={{background: 'linear-gradient(135deg, rgba(168,85,247,0.05), rgba(0,240,255,0.05))'}}>
+      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1">⚡ BODOVI bonus</div>
+          <div className="font-display text-3xl sm:text-4xl font-black text-brand3">{bodovi.toLocaleString('sr-Latn')}</div>
+          <div className="text-[10px] text-white/50 mt-1">10.000 BODOVA = €5 bonus u "Prodaja" bucket</div>
+        </div>
+        {bonusCount > 0 && (
+          <div className="px-3 py-2 rounded-lg bg-lime/15 border border-lime/40 text-center">
+            <div className="text-[9px] uppercase text-lime/80 font-bold">Dostupno</div>
+            <div className="font-display font-black text-lg text-lime">€{(bonusCount * 5).toFixed(2)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Progress bar do sledećeg €5 */}
+      <div className="h-2 rounded-full bg-white/5 overflow-hidden mb-2">
+        <div className="h-full rounded-full transition-all" style={{ width: Math.round((nextTier/10000)*100) + '%', background: 'linear-gradient(90deg, #a855f7, #00f0ff)' }}/>
+      </div>
+      <div className="text-[10px] text-white/50 flex justify-between mb-3">
+        <span>{nextTier.toLocaleString('sr-Latn')} / 10.000</span>
+        <span>Još <strong className="text-brand3">{toGo.toLocaleString('sr-Latn')}</strong> do sledećeg €5</span>
+      </div>
+
+      {canConvert ? (
+        <button onClick={convert} disabled={busy}
+          className="w-full px-6 py-3 rounded-xl font-extrabold text-bg0 bg-gradient-to-r from-brand3 to-brand disabled:opacity-50 text-sm">
+          {busy ? 'Konvertujem...' : `🎁 Iskoristi ${bonusCount}× bonus (€${(bonusCount * 5).toFixed(2)})`}
+        </button>
+      ) : (
+        <div className="p-3 rounded-xl bg-bg0/40 text-xs text-white/50 text-center">
+          Treba ti 10.000 BODOVA za prvi €5 bonus. Reels = 10 BODOVA, prodaja = 50 BODOVA, dostignuća daju puno.
+        </div>
+      )}
+
+      {msg && (
+        <div className={"mt-3 text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>{msg.text}</div>
+      )}
+    </div>
+  );
+}
+
 // === TIM PRODAJE DETALJI MODAL ===
 function TeamSalesDetailModal({ athleteId, onClose }) {
   const [items, setItems] = useState([]);
@@ -2098,8 +2217,8 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">💸 Isplate</h1>
-        <p className="text-sm text-white/60">Pregled, zahtevi i istorija.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_isplate_title','💸 Isplate')}</h1>
+        <p className="text-sm text-white/60">{t('portal_isplate_intro','Pregled, zahtevi i istorija.')}</p>
       </div>
 
       {pending && (
@@ -2219,6 +2338,9 @@ function IsplatePage({ athlete, profile, refreshProfile }) {
 
       {showTeamDetails && <TeamSalesDetailModal athleteId={athlete.id} onClose={()=>setShowTeamDetails(false)}/>}
 
+      {/* === BODOVI BUCKET — konvertuj 10k BODOVA u €5 === */}
+      <BodoviConvertCard athleteId={athlete.id} onConverted={() => load()}/>
+
       {msg && (
         <div className={"text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>{msg.text}</div>
       )}
@@ -2309,8 +2431,8 @@ function ProfilPage({ athlete, profile, refreshProfile }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">👤 Profil</h1>
-        <p className="text-sm text-white/60">Lični podaci, Rewardful link i bank info.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_profil_title','👤 Profil')}</h1>
+        <p className="text-sm text-white/60">{t('portal_profil_subtitle','Lični podaci, Rewardful link i bank info.')}</p>
       </div>
 
       {/* PROFILE PICTURE UPLOAD */}
@@ -3639,8 +3761,8 @@ function AchievementsPage({ athlete }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">🏆 Dostignuća</h1>
-        <p className="text-sm text-white/60">Otključavaj badge-ove kroz akciju. Svako dostignuće = BODOVA nagrada.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_dostignuca_title','🏆 Dostignuća')}</h1>
+        <p className="text-sm text-white/60">{t('portal_dostignuca_intro','Otključavaj badge-ove kroz akciju. Svako dostignuće = BODOVA nagrada.')}</p>
       </div>
 
       {/* SUMMARY */}
@@ -3841,8 +3963,8 @@ function LeaderboardPage({ athlete }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">📊 Rang Lista</h1>
-        <p className="text-sm text-white/60">Top 50 atleta. Bori se za #1.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_rang_title','📊 Rang Lista')}</h1>
+        <p className="text-sm text-white/60">{t('portal_rang_intro','Top 50 atleta. Bori se za #1.')}</p>
       </div>
 
       {/* MY RANK CARD */}
@@ -5035,66 +5157,157 @@ const TEMPLATE_LABELS = {
 // === ADMIN: LANDING CMS (Edit oficijelni sajt) ===
 // =====================================================
 // === PORTAL CMS — sva tekstualna polja portala koja admin moze editovati ===
-// Kljuc se cita iz public.settings tabele. Portal koristi `usePortalText(key, fallback)` hook.
+// Tekstovi se citaju iz public.settings tabele preko t(key, fallback) helpera (vidi App komponentu)
 const LANDING_SECTIONS = [
-  { title:'🏠 Landing portala (vrh)', keys: [
+  { title:'🏠 Landing portala (početna stranica)', keys: [
     { key:'portal_landing_kicker', label:'Mali tekst iznad naslova', placeholder:'Prijave otvorene' },
-    { key:'portal_landing_title', label:'Veliki naslov', placeholder:'VAMIT-5 Athlete Portal', textarea:true },
-    { key:'portal_landing_subtitle', label:'Podnaslov ispod', placeholder:'Postavi Reels, prati prodaje, gradi tim — sve na jednom mestu.', textarea:true },
-    { key:'portal_landing_cta', label:'Tekst velikog dugmeta (Prijava)', placeholder:'Uđi u portal →' },
+    { key:'portal_landing_title', label:'Veliki naslov (prvi red)', placeholder:'VAMIT-5 Athlete' },
+    { key:'portal_landing_title2', label:'Veliki naslov (drugi red, izdvojen)', placeholder:'Portal' },
+    { key:'portal_landing_subtitle', label:'Podnaslov', placeholder:'Postavi Reels, prati prodaje, gradi tim — sve na jednom mestu.', textarea:true },
+    { key:'portal_landing_cta_primary', label:'Glavno dugme', placeholder:'Uđi u portal' },
+    { key:'portal_landing_cta_secondary', label:'Sekundarno dugme', placeholder:'Saznaj više' },
+    { key:'portal_landing_feature_1_title', label:'Feature 1 — naslov', placeholder:'🎬 Reels = novac' },
+    { key:'portal_landing_feature_1_text', label:'Feature 1 — tekst', placeholder:'Postavi Reels, dobij €0.25-0.40 po odobrenom.', textarea:true },
+    { key:'portal_landing_feature_2_title', label:'Feature 2 — naslov', placeholder:'💎 Prodaje = provizija' },
+    { key:'portal_landing_feature_2_text', label:'Feature 2 — tekst', placeholder:'35-50% od svakog prodatog paketa.', textarea:true },
+    { key:'portal_landing_feature_3_title', label:'Feature 3 — naslov', placeholder:'👥 Tim = pasivni prihod' },
+    { key:'portal_landing_feature_3_text', label:'Feature 3 — tekst', placeholder:'15-25% od svake prodaje tvog tima.', textarea:true },
   ]},
   { title:'🔐 Login stranica', keys: [
     { key:'portal_login_title', label:'Naslov', placeholder:'Prijavi se' },
-    { key:'portal_login_subtitle', label:'Tekst ispod naslova', placeholder:'Unesi email — šaljemo ti 6-cifreni kod. Radi i za nove atlete.', textarea:true },
+    { key:'portal_login_subtitle', label:'Tekst ispod naslova', placeholder:'Unesi email — šaljemo ti 6-cifreni kod. Radi i za nove atlete (automatski kreiramo nalog).', textarea:true },
     { key:'portal_login_button_send', label:'Dugme: Pošalji kod', placeholder:'Pošalji kod na email' },
     { key:'portal_login_button_verify', label:'Dugme: Potvrdi kod', placeholder:'Uđi u portal' },
     { key:'portal_login_resend_link', label:'Link: Pošalji ponovo', placeholder:'Pošalji ponovo' },
-    { key:'portal_login_rewardful_note', label:'Napomena o Rewardful-u', placeholder:'Hoces da pratis prodaje?', textarea:true },
+    { key:'portal_login_code_sent_msg', label:'Poruka posle slanja koda', placeholder:'Poslali smo ti 6-cifreni kod na email. Unesi ga ispod.', textarea:true },
+    { key:'portal_login_rewardful_note', label:'Napomena o Rewardful-u', placeholder:'Hoceš da pratiš prodaje?', textarea:true },
+    { key:'portal_login_invited_by', label:'Inviter banner naslov', placeholder:'Pozvao te {ime}' },
+    { key:'portal_login_invited_by_text', label:'Inviter banner tekst', placeholder:'Posle registracije bićeš deo njegovog tima — automatski.', textarea:true },
   ]},
-  { title:'📊 Dashboard — naslovi', keys: [
-    { key:'portal_dash_welcome', label:'Pozdrav korisniku', placeholder:'Zdravo, {ime}!' },
-    { key:'portal_dash_subtitle', label:'Mali tekst ispod', placeholder:'Tvoj VAMIT-5 dashboard', textarea:true },
-    { key:'portal_dash_progress_title', label:'Naslov progres sekcije', placeholder:'Tvoja sledeća promocija' },
-    { key:'portal_dash_team_section_title', label:'Naslov Moj Tim sekcije', placeholder:'Moj Tim' },
-    { key:'portal_dash_team_intro', label:'Mali tekst ispod Moj Tim', placeholder:'Procentualna provizija od svake prodaje tvog tima — doživotno.' },
+  { title:'📊 Dashboard glavni', keys: [
+    { key:'portal_dash_welcome', label:'Pozdrav atleti', placeholder:'Zdravo, {ime}' },
+    { key:'portal_dash_subtitle', label:'Mali tekst ispod imena', placeholder:'Tvoj VAMIT-5 portal' },
+    { key:'portal_dash_stat_available', label:'StatCard: Dostupno', placeholder:'Dostupno' },
+    { key:'portal_dash_stat_pending', label:'StatCard: Na čekanju', placeholder:'Na čekanju' },
+    { key:'portal_dash_stat_lifetime', label:'StatCard: Ukupna zarada', placeholder:'Ukupna zarada' },
+    { key:'portal_dash_progress_title', label:'Naslov progres bara', placeholder:'Tvoja sledeća promocija' },
+    { key:'portal_dash_progress_complete', label:'Tekst kad ispuni cilj', placeholder:'✓ Spreman za novi nivo!' },
+    { key:'portal_dash_bodovi_title', label:'BODOVI bonus kartica naslov', placeholder:'⚡ BODOVI' },
+    { key:'portal_dash_bodovi_hint', label:'BODOVI bonus kartica hint', placeholder:'Svakih 10.000 = €5 bonus ✨' },
+    { key:'portal_dash_bodovi_legend', label:'BODOVI legenda na dnu', placeholder:'💡 +10 BODOVA po reel-u · +50 po prodaji · +50-30000 po dostignuću' },
+    { key:'portal_dash_mentor_label', label:'Mali label za mentor', placeholder:'🤝 Moj mentor' },
+    { key:'portal_dash_team_title', label:'Moj Tim naslov', placeholder:'👥 Moj Tim' },
+    { key:'portal_dash_team_subtitle', label:'Moj Tim podnaslov', placeholder:'Provizija od svake prodaje tvog tima — doživotno' },
+    { key:'portal_dash_team_empty', label:'Empty state ako nema tima', placeholder:'Nemaš još nikog u timu.', textarea:true },
+    { key:'portal_dash_team_empty_hint', label:'Hint kad nema tima', placeholder:'Tim se gradi kad neko se prijavi preko TVOG invite linka.' },
+    { key:'portal_dash_team_invite_label', label:'Invite link label', placeholder:'📨 Tvoj invite link (deli sa prijateljima)' },
+    { key:'portal_dash_team_invite_hint', label:'Invite link hint ispod', placeholder:'Kad neko klikne link i registruje se — automatski ulazi u tvoj tim i ti dobijaš proviziju od svake njegove prodaje.', textarea:true },
+  ]},
+  { title:'⚡ Brze akcije (dashboard dugmad)', keys: [
+    { key:'portal_qa_add_reel', label:'Dodaj Reel', placeholder:'Dodaj Reel' },
+    { key:'portal_qa_kurs', label:'Otvori Kurs', placeholder:'Otvori Kurs' },
+    { key:'portal_qa_dostignuca', label:'Dostignuća', placeholder:'Dostignuća' },
+    { key:'portal_qa_rang', label:'Rang Lista', placeholder:'Rang Lista' },
   ]},
   { title:'🎬 Reels stranica', keys: [
     { key:'portal_reels_title', label:'Naslov', placeholder:'🎬 Moji Reels' },
-    { key:'portal_reels_intro', label:'Uvodni tekst', placeholder:'Postavi link na svoj Reel ovde. Admin ga odobri, zarada se pripisuje.', textarea:true },
-    { key:'portal_reels_rules', label:'Pravila šta je validan Reel', placeholder:'1. Reel mora biti tvoj orginal\n2. Mora biti vidljiv na Instagramu\n3. Postavljen u poslednjih 7 dana', textarea:true },
+    { key:'portal_reels_intro', label:'Uvodni tekst', placeholder:'Postavi link na svoj Reel ovde. Admin ga odobri, zarada se pripisuje automatski.', textarea:true },
+    { key:'portal_reels_rules', label:'Pravila šta je validan Reel', placeholder:'1. Reel mora biti tvoj orginal\n2. Mora biti vidljiv na Instagramu (ne privatan)\n3. Postavljen u poslednjih 7 dana', textarea:true },
+    { key:'portal_reels_input_placeholder', label:'Input placeholder', placeholder:'https://www.instagram.com/reel/...' },
     { key:'portal_reels_submit_button', label:'Dugme za postavljanje', placeholder:'📤 Postavi Reel' },
+    { key:'portal_reels_history_title', label:'Naslov istorije', placeholder:'Istorija' },
+    { key:'portal_reels_empty', label:'Empty state ako nema reels-ova', placeholder:'Nemaš još reels-ova. Postavi prvi i pokreni zaradu!', textarea:true },
   ]},
   { title:'💸 Isplate stranica', keys: [
     { key:'portal_isplate_title', label:'Naslov', placeholder:'💸 Isplate' },
     { key:'portal_isplate_intro', label:'Uvodni tekst', placeholder:'Pregled, zahtevi i istorija.' },
-    { key:'portal_isplate_reels_label', label:'Naslov Reels kartice', placeholder:'🎬 Reels zarada' },
-    { key:'portal_isplate_sales_label', label:'Naslov Prodaja kartice', placeholder:'💎 Prodaja paketa' },
-    { key:'portal_isplate_team_label', label:'Naslov Tim kartice', placeholder:'👥 Tim provizija' },
-    { key:'portal_isplate_min_note', label:'Tekst ispod min iznosa', placeholder:'Stiže za 12-24h nakon provere' },
+    { key:'portal_isplate_reels_label', label:'Reels kartica label', placeholder:'🎬 Reels zarada' },
+    { key:'portal_isplate_sales_label', label:'Prodaja kartica label', placeholder:'💎 Prodaja paketa' },
+    { key:'portal_isplate_team_label', label:'Tim kartica label', placeholder:'👥 Tim provizija' },
+    { key:'portal_isplate_bodovi_label', label:'BODOVI kartica label', placeholder:'⚡ BODOVI bonus' },
+    { key:'portal_isplate_reels_locked', label:'Reels zaključano tekst', placeholder:'Otključaj sa:' },
+    { key:'portal_isplate_reels_locked_hint', label:'Reels locked hint', placeholder:'Tvoja zarada od reels-ova čeka. Kad ispuniš uslove, otključavaš automatski.', textarea:true },
+    { key:'portal_isplate_min_note_recruit', label:'Min iznos REGRUT', placeholder:'REGRUT: bilo koji iznos' },
+    { key:'portal_isplate_min_note_other', label:'Min iznos ostali', placeholder:'Minimum: €10' },
+    { key:'portal_isplate_processing_time', label:'Vreme isplate', placeholder:'Stiže za 12-24h nakon provere' },
+    { key:'portal_isplate_input_hint', label:'Hint za zarezovni input', placeholder:'💡 Iznos možeš upisati i sa zarezom (0,50) ili tačkom (0.50) — oba rade.', textarea:true },
+    { key:'portal_isplate_request_btn_full', label:'Dugme ceo iznos', placeholder:'📤 Zatraži ceo iznos' },
+    { key:'portal_isplate_pending_banner', label:'Pending zahtev banner', placeholder:'⏳ Imaš zahtev za isplatu od {amount} ({source}). Admin obrađuje.' },
+    { key:'portal_isplate_team_no_earnings', label:'Tim no earnings tekst', placeholder:'Trenutno nemaš tim zarade. Kad neko iz tvog tima proda — pojaviće se ovde.', textarea:true },
   ]},
   { title:'👤 Profil stranica', keys: [
     { key:'portal_profil_title', label:'Naslov', placeholder:'👤 Profil' },
     { key:'portal_profil_subtitle', label:'Tekst ispod', placeholder:'Lični podaci, Rewardful link i bank info.' },
-    { key:'portal_profil_obligation_text', label:'OBAVEZA Rewardful tekst', placeholder:'⚠️ OBAVEZA — bez ovoga ne zarađuješ' },
-    { key:'portal_profil_obligation_body', label:'Opis OBAVEZE', placeholder:'Rewardful nalog je jedini način da Stripe zna ko je prodao paket. Bez linka ovde, provizije neće stizati.', textarea:true },
+    { key:'portal_profil_basic_title', label:'Osnovni podaci naslov', placeholder:'Osnovni podaci' },
+    { key:'portal_profil_bank_title', label:'Bank info naslov', placeholder:'🏦 Bank info (za isplate)' },
+    { key:'portal_profil_email_label', label:'Email label', placeholder:'Email' },
+    { key:'portal_profil_name_label', label:'Ime label', placeholder:'Puno ime' },
+    { key:'portal_profil_iban_label', label:'IBAN label', placeholder:'IBAN' },
+    { key:'portal_profil_phone_label', label:'Telefon label', placeholder:'Telefon' },
+    { key:'portal_profil_save_btn', label:'Sačuvaj dugme', placeholder:'💾 Sačuvaj' },
+    { key:'portal_profil_obligation_text', label:'OBAVEZA Rewardful naslov', placeholder:'⚠️ OBAVEZA — bez ovoga ne zarađuješ' },
+    { key:'portal_profil_obligation_body', label:'Opis OBAVEZE', placeholder:'Rewardful nalog je jedini način da Stripe zna ko je prodao paket. Bez linka ovde, provizije neće stizati. 2 minuta posao:', textarea:true },
+    { key:'portal_profil_rewardful_step1', label:'Rewardful korak 1', placeholder:'Klikni "Otvori Rewardful registraciju" dole' },
+    { key:'portal_profil_rewardful_step2', label:'Rewardful korak 2', placeholder:'Registruj se sa istim email-om' },
+    { key:'portal_profil_rewardful_step3', label:'Rewardful korak 3', placeholder:'Rewardful ti daje link tipa https://vamit-5-2.getrewardful.com/?via=KOD' },
+    { key:'portal_profil_rewardful_step4', label:'Rewardful korak 4', placeholder:'Zalepi link u polje dole → Sačuvaj' },
+    { key:'portal_profil_rewardful_cta', label:'Rewardful signup dugme', placeholder:'🚀 Otvori Rewardful registraciju →' },
+    { key:'portal_profil_rewardful_input_label', label:'Input label za nove', placeholder:'Zalepi svoj Rewardful link ovde' },
+    { key:'portal_profil_rewardful_change_label', label:'Input label za promenu', placeholder:'Promeni link (opciono)' },
   ]},
   { title:'📚 Kurs stranica', keys: [
     { key:'portal_kurs_title', label:'Naslov', placeholder:'📚 VAMIT-5 Kurs' },
     { key:'portal_kurs_intro', label:'Uvodni tekst', placeholder:'Sve što treba znati o programu, prodajama i Reels-ovima.', textarea:true },
+    { key:'portal_kurs_progress_label', label:'Progress label', placeholder:'Završeno' },
+    { key:'portal_kurs_empty', label:'Empty state', placeholder:'Kurs još nije dostupan. Uskoro!', textarea:true },
   ]},
   { title:'🏆 Dostignuća stranica', keys: [
     { key:'portal_dostignuca_title', label:'Naslov', placeholder:'🏆 Dostignuća' },
     { key:'portal_dostignuca_intro', label:'Uvodni tekst', placeholder:'Otključavaj badge-ove kroz akciju. Svako dostignuće = BODOVA nagrada.', textarea:true },
-    { key:'portal_dostignuca_bonus_note', label:'Mali tekst o BODOVI bonusu', placeholder:'💡 Svakih 10.000 BODOVA = €5 bonus pri sledećoj isplati' },
+    { key:'portal_dostignuca_filter_all', label:'Filter sve', placeholder:'Sva' },
+    { key:'portal_dostignuca_filter_unlocked', label:'Filter otključana', placeholder:'Otključana' },
+    { key:'portal_dostignuca_filter_locked', label:'Filter zaključana', placeholder:'Zaključana' },
+    { key:'portal_dostignuca_summary_unlocked', label:'Summary: Otključano', placeholder:'Otključano' },
+    { key:'portal_dostignuca_summary_bodovi', label:'Summary: BODOVA', placeholder:'BODOVA iz dostignuća' },
+    { key:'portal_dostignuca_summary_streak', label:'Summary: Streak', placeholder:'Streak' },
+    { key:'portal_dostignuca_empty', label:'Empty state', placeholder:'Nema dostignuća u ovoj kategoriji.' },
   ]},
   { title:'📊 Rang Lista stranica', keys: [
     { key:'portal_rang_title', label:'Naslov', placeholder:'📊 Rang Lista' },
     { key:'portal_rang_intro', label:'Uvodni tekst', placeholder:'Najbolji atlete VAMIT-5 portala — po BODOVIMA u tekućoj sezoni.', textarea:true },
+    { key:'portal_rang_empty', label:'Empty state', placeholder:'Još nema atleta u rangu.', textarea:true },
   ]},
-  { title:'🔔 Push notifikacije (template-ovi)', keys: [
-    { key:'portal_push_reel_remind_1', label:'Daily reel reminder #1', placeholder:'🎬 Reel za danas? — Postavi sad i pokupi novac sa stola!', textarea:true },
-    { key:'portal_push_reel_remind_2', label:'Daily reel reminder #2', placeholder:'🔥 Tvoj dan još nije gotov! — Reel = € u džepu', textarea:true },
-    { key:'portal_push_reel_remind_3', label:'Daily reel reminder #3', placeholder:'💎 Ne propusti dnevnu zaradu — Postavi Reel danas', textarea:true },
+  { title:'🔔 Notifikacije / Push', keys: [
+    { key:'portal_push_reel_remind_1', label:'Daily reminder #1 naslov', placeholder:'🎬 Reel za danas?' },
+    { key:'portal_push_reel_remind_1_body', label:'Daily reminder #1 telo', placeholder:'Postavi sad i pokupi novac sa stola! 💸', textarea:true },
+    { key:'portal_push_reel_remind_2', label:'Daily reminder #2 naslov', placeholder:'🔥 Tvoj dan još nije gotov!' },
+    { key:'portal_push_reel_remind_2_body', label:'Daily reminder #2 telo', placeholder:'30 sekundi rada = lak novac. Postavi Reel sad 💰', textarea:true },
+    { key:'portal_push_reel_remind_3', label:'Daily reminder #3 naslov', placeholder:'💎 Ne propusti dnevnu zaradu' },
+    { key:'portal_push_reel_remind_3_body', label:'Daily reminder #3 telo', placeholder:'Postavi Reel danas pa budi miran 🚀', textarea:true },
+    { key:'portal_push_reel_approved', label:'Reel odobren naslov', placeholder:'✅ Reel odobren!' },
+    { key:'portal_push_reel_approved_body', label:'Reel odobren telo', placeholder:'Tvoj reel je odobren. +€{amount} dodato na zaradu + 10 BODOVA!', textarea:true },
+    { key:'portal_push_sale', label:'Prodaja naslov', placeholder:'💎 Nova prodaja!' },
+    { key:'portal_push_sale_body', label:'Prodaja telo', placeholder:'+€{amount} od nove prodaje preko tvog linka.', textarea:true },
+    { key:'portal_push_team_sale', label:'Tim prodaja naslov', placeholder:'👥 Tim prodaja!' },
+    { key:'portal_push_team_sale_body', label:'Tim prodaja telo', placeholder:'+€{amount} od prodaje tvog tima ({pct}%).', textarea:true },
+    { key:'portal_push_payout_paid', label:'Isplata izvršena naslov', placeholder:'💰 Isplata izvršena!' },
+    { key:'portal_push_payout_paid_body', label:'Isplata telo', placeholder:'Tvoja isplata od €{amount} je poslata.' },
+    { key:'portal_push_welcome', label:'Welcome naslov', placeholder:'👋 Dobrodošao u VAMIT-5!' },
+    { key:'portal_push_welcome_body', label:'Welcome telo', placeholder:'Tvoj nalog je spreman. Postavi prvi Reel da zaradiš.', textarea:true },
+  ]},
+  { title:'🎖️ Nivoi atleta (REGRUT, PRO, COMMANDO, ELITE)', keys: [
+    { key:'portal_level_recruit_name', label:'REGRUT — ime', placeholder:'REGRUT' },
+    { key:'portal_level_recruit_desc', label:'REGRUT — opis', placeholder:'Početni nivo. 35% provizije od paketa + €0.25/reel + 15% od tima.', textarea:true },
+    { key:'portal_level_pro_name', label:'PRO — ime', placeholder:'PRO' },
+    { key:'portal_level_pro_desc', label:'PRO — opis', placeholder:'40% paketa + €0.30/reel + 15% tim + merchandise.', textarea:true },
+    { key:'portal_level_commando_name', label:'COMMANDO — ime', placeholder:'COMMANDO' },
+    { key:'portal_level_commando_desc', label:'COMMANDO — opis', placeholder:'45% paketa + €0.35/reel + 20% tim + merchandise.', textarea:true },
+    { key:'portal_level_elite_name', label:'ELITE — ime', placeholder:'ELITE' },
+    { key:'portal_level_elite_desc', label:'ELITE — opis', placeholder:'50% paketa + €0.40/reel + 25% tim + 20% shop + putovanja, eventi, fixna zarada.', textarea:true },
+  ]},
+  { title:'🌐 Meta tagovi (SEO)', keys: [
+    { key:'portal_meta_title', label:'Browser tab title', placeholder:'VAMIT-5 Athlete Portal' },
+    { key:'portal_meta_description', label:'Meta description', placeholder:'Postani VAMIT-5 atleta i zaradi od Reels-a, prodaja i tima.', textarea:true },
   ]},
 ];
 
@@ -5491,6 +5704,15 @@ function App() {
         .then(reg => { reg.update(); })
         .catch(err => console.log('SW reg failed:', err));
     }
+  }, []);
+
+  // === LOAD PORTAL TEXTS at startup, then re-render when ready ===
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    loadPortalTexts();
+    const handler = () => forceUpdate(x => x + 1);
+    window.addEventListener('portal-texts-loaded', handler);
+    return () => window.removeEventListener('portal-texts-loaded', handler);
   }, []);
 
   // === TIM INVITE: sacuvaj ref param u localStorage (radi sve dok je u URL-u) ===
