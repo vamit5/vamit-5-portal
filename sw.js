@@ -1,6 +1,6 @@
-// VAMIT-5 Portal Service Worker v9 — force cache bust posle promene logo-a
-const VERSION = 'vamit5-v9';
-const LOGO_URL = '/vamit5-icon.svg?v=9';
+// VAMIT-5 Portal Service Worker v10 — notif click absolute URL fix
+const VERSION = 'vamit5-v10';
+const LOGO_URL = '/vamit5-icon.svg?v=10';
 
 self.addEventListener('install', (e) => {
   console.log('[SW] install v7');
@@ -76,16 +76,27 @@ self.addEventListener('push', (e) => {
 self.addEventListener('notificationclick', (e) => {
   console.log('[SW] notif click');
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/#/dashboard';
+  // Normalizuj URL → uvek mora biti apsolutna path-ruta (pocinje sa /)
+  let rawUrl = (e.notification.data && e.notification.data.url) || '/#/dashboard';
+  if (typeof rawUrl !== 'string') rawUrl = '/#/dashboard';
+  // Ako URL pocinje sa # ili je relativan, dodaj / pred njega
+  if (rawUrl.startsWith('#')) rawUrl = '/' + rawUrl;
+  else if (!rawUrl.startsWith('/') && !rawUrl.startsWith('http')) rawUrl = '/#/' + rawUrl.replace(/^\/+/, '');
+  // Sastavi PUNI URL prema scope-u SW-a (ne pravimo relativne pozive jer mogu da prikazu code/JSON)
+  const fullUrl = new URL(rawUrl, self.registration.scope).href;
+  console.log('[SW] navigate to', fullUrl);
+
   e.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
+      // Pokusaj da pronadjes vec otvoreni PWA tab/window
       for (const c of clients) {
-        if (c.url.includes(self.registration.scope) && 'focus' in c) {
-          try { c.navigate(url); } catch (e) {}
+        if (c.url.startsWith(self.registration.scope)) {
+          try { await c.navigate(fullUrl); } catch (err) { console.warn('navigate fail:', err); }
           return c.focus();
         }
       }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
+      // Inace otvori nov
+      if (self.clients.openWindow) return self.clients.openWindow(fullUrl);
     })
   );
 });
