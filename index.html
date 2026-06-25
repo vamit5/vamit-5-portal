@@ -5450,67 +5450,173 @@ const TEMPLATE_LABELS = {
 // === ADMIN: LANDING CMS (Edit oficijelni sajt) ===
 // =====================================================
 // === AFFILIATE SITE CMS — za vamit5-affiliate.vercel.app ===
-// Sva tekstualna i slika polja affiliate sajta. Sajt ih cita iz settings tabele dinamicki.
+// 128 polja koja pokrivaju SVAKI tekst i sliku sajta. Cita iz landing_content tabele.
 const AFFILIATE_SECTIONS = [
-  { title:'🖼️ Hero (vrh stranice)', keys: [
-    { key:'landing_logo_url', label:'Logo URL', placeholder:'https://res.cloudinary.com/...' },
-    { key:'landing_hero_image', label:'Hero pozadinska slika URL (opciono)', placeholder:'https://...' },
-    { key:'landing_hero_kicker', label:'Mali tekst iznad naslova', placeholder:'PRIJAVE OTVORENE' },
-    { key:'landing_hero_title', label:'Hero naslov (veliki)', placeholder:'Zaradi kroz trening — postani 100% atleta', textarea:true },
-    { key:'landing_hero_subtitle', label:'Hero podnaslov', placeholder:'Prvi fitness affiliate program u regionu gde tvoj trud postaje doživotni prihod.', textarea:true },
-  ]},
-  { title:'🚀 Glavna dugmad (CTA)', keys: [
-    { key:'landing_cta_primary_text', label:'Primary dugme tekst', placeholder:'Postani VAMIT-5 atleta' },
-    { key:'landing_cta_primary_url', label:'Primary dugme link', placeholder:'https://vamit-5-2.getrewardful.com/signup' },
-    { key:'landing_cta_secondary_text', label:'Secondary dugme tekst', placeholder:'Već imam nalog' },
-    { key:'landing_cta_secondary_url', label:'Secondary dugme link', placeholder:'https://vamit-5-portal.vercel.app/#/login' },
-  ]},
-  { title:'📊 Stats (3 velika broja)', keys: [
-    { key:'landing_stats_athletes', label:'Brojka 1', placeholder:'500+' },
-    { key:'landing_stats_label_1', label:'Label 1', placeholder:'Aktivnih atleta' },
-    { key:'landing_stats_paid', label:'Brojka 2', placeholder:'€50,000+' },
-    { key:'landing_stats_label_2', label:'Label 2', placeholder:'Isplaćeno do sada' },
-    { key:'landing_stats_reels', label:'Brojka 3', placeholder:'10,000+' },
-    { key:'landing_stats_label_3', label:'Label 3', placeholder:'Reels-ova postavljeno' },
-  ]},
-  { title:'⚙️ Kako radi (3 koraka)', keys: [
-    { key:'landing_how_title', label:'Sekcija naslov', placeholder:'Kako VAMIT-5 radi' },
-    { key:'landing_how_step1_title', label:'Korak 1 — naslov', placeholder:'1. Registruj se' },
-    { key:'landing_how_step1_text', label:'Korak 1 — tekst', placeholder:'Klikni "Postani atleta", napravi nalog za 2 minuta.', textarea:true },
-    { key:'landing_how_step2_title', label:'Korak 2 — naslov', placeholder:'2. Postavi Reels' },
-    { key:'landing_how_step2_text', label:'Korak 2 — tekst', placeholder:'Snimaj 30-sekundne treninge na Instagramu. Admin odobri, ti zarađuješ.', textarea:true },
-    { key:'landing_how_step3_title', label:'Korak 3 — naslov', placeholder:'3. Zarađuj' },
-    { key:'landing_how_step3_text', label:'Korak 3 — tekst', placeholder:'Po reel-u + provizija po prodaji + tim sistem = doživotni prihod.', textarea:true },
-  ]},
-  { title:'🎖️ Nivoi (4 kartice)', keys: [
-    { key:'landing_levels_title', label:'Sekcija naslov', placeholder:'4 nivoa napredovanja' },
-    { key:'landing_levels_subtitle', label:'Podnaslov', placeholder:'Napreduješ konzistentnošću — automatski rasti svoj prihod' },
-    { key:'landing_level_recruit_desc', label:'REGRUT opis', placeholder:'Početni nivo. 35% provizije od paketa + €0.25/reel + 15% od tima.', textarea:true },
-    { key:'landing_level_pro_desc', label:'PRO opis', placeholder:'40% paketa + €0.30/reel + 15% tim + VAMIT-5 merchandise.', textarea:true },
-    { key:'landing_level_commando_desc', label:'COMMANDO opis', placeholder:'45% paketa + €0.35/reel + 20% tim + premium merchandise.', textarea:true },
-    { key:'landing_level_elite_desc', label:'ELITE opis', placeholder:'50% paketa + €0.40/reel + 25% tim + putovanja + eventi + fixna plata.', textarea:true },
-  ]},
-  { title:'❓ FAQ (3 pitanja)', keys: [
-    { key:'landing_faq_title', label:'FAQ naslov', placeholder:'Često pitana pitanja' },
-    { key:'landing_faq_q1', label:'Pitanje 1', placeholder:'Da li moram da plaćam nešto?' },
-    { key:'landing_faq_a1', label:'Odgovor 1', placeholder:'Ne. Registracija je 100% besplatna. Zarađuješ od dana 1.', textarea:true },
-    { key:'landing_faq_q2', label:'Pitanje 2', placeholder:'Koliko brzo dobijam isplate?' },
-    { key:'landing_faq_a2', label:'Odgovor 2', placeholder:'12-24h posle zahteva. REGRUT bez minimuma, ostali min €10.', textarea:true },
-    { key:'landing_faq_q3', label:'Pitanje 3', placeholder:'Mogu li da otkažem?' },
-    { key:'landing_faq_a3', label:'Odgovor 3', placeholder:'Da, bilo kad. Nema ugovora ni kazne. Slobodan si.', textarea:true },
-  ]},
-  { title:'🦶 Footer + Social', keys: [
-    { key:'landing_footer_text', label:'Footer tekst', placeholder:'© VAMIT-5 2026. Sva prava zadržana.' },
-    { key:'landing_contact_email', label:'Kontakt email', placeholder:'support@vamit-5.com' },
-    { key:'landing_instagram_url', label:'Instagram URL', placeholder:'https://instagram.com/vamit_5_official' },
-    { key:'landing_tiktok_url', label:'TikTok URL', placeholder:'https://tiktok.com/@vamit_5' },
-    { key:'landing_youtube_url', label:'YouTube URL', placeholder:'https://youtube.com/@vamit5' },
-    { key:'landing_main_site_url', label:'Glavni sajt URL', placeholder:'https://vamit-5.com' },
-  ]},
-  { title:'🌐 SEO Meta', keys: [
-    { key:'landing_meta_title', label:'Browser tab title', placeholder:'VAMIT-5 — Postani 100% atleta' },
-    { key:'landing_meta_description', label:'Meta description', placeholder:'Prvi fitness affiliate program u regionu. Zaradi kroz trening.', textarea:true },
-  ]},
+  { title: "🧭 Navigation", keys: [
+    { key: "nav_brand_title", label: "Brand naslov", placeholder: "VAMIT-5" },
+    { key: "nav_brand_subtitle", label: "Brand podnaslov", placeholder: "Athlete Program" },
+    { key: "nav_cta_text", label: "CTA dugme", placeholder: "Prijavi se" },
+    { key: "logo_url", label: "Logo URL", placeholder: "https://res.cloudinary.com/..." },
+  ] },
+  { title: "🏆 Hero (vrh stranice)", keys: [
+    { key: "hero_badge", label: "Badge (PRIJAVE OTVORENE)", placeholder: "Prijave otvorene" },
+    { key: "hero_title_main", label: "Naslov - prvi deo", placeholder: "Jedini fitnes sistem koji" },
+    { key: "hero_title_accent", label: "Naslov - obojeni deo", placeholder: "isplaćuje već za manje od 24h." },
+    { key: "hero_title_note", label: "Naslov - napomena u zagradama", placeholder: "(provereno)" },
+    { key: "hero_subtitle", label: "Podnaslov ispod", placeholder: "VAMIT-5 Athlete Program. Pravi sistem za ljude koji žele da rastu, grade lični brend i zarađuju od onoga što već rade.", textarea: true },
+    { key: "hero_reels_callout_main", label: "Reels callout - bold deo", placeholder: "Direktna zarada" },
+    { key: "hero_reels_callout_rest", label: "Reels callout - srednji tekst", placeholder: "po svakom postavljenom reelsu — " },
+    { key: "hero_reels_callout_bold", label: "Reels callout - lime tekst", placeholder: "za manje od 24h" },
+    { key: "hero_reels_callout_end", label: "Reels callout - kraj", placeholder: "stiže na tvoj nalog." },
+    { key: "hero_cta_text", label: "CTA dugme tekst", placeholder: "UĐI U VAMIT-5 ATHLETE PROGRAM" },
+    { key: "hero_cta_subtext_main", label: "CTA subtekst - prvi deo", placeholder: "POČNI ODMAH" },
+    { key: "hero_cta_subtext_rest", label: "CTA subtekst - kraj", placeholder: "popunjavanje traje 2 minuta" },
+    { key: "hero_image_url", label: "Hero slika URL", placeholder: "https://res.cloudinary.com/..." },
+    { key: "hero_zajednica_label", label: "Zajednica label", placeholder: "Zajednica" },
+    { key: "hero_zajednica_title", label: "Zajednica title", placeholder: "VAMIT-5 Athletes" },
+    { key: "hero_live_label", label: "LIVE program tag", placeholder: "LIVE program" },
+  ] },
+  { title: "🔢 Counteri (4 brojke ispod Hero)", keys: [
+    { key: "counter1_value", label: "Brojka 1", placeholder: "24" },
+    { key: "counter1_suffix", label: "Sufiks 1", placeholder: "h" },
+    { key: "counter1_label", label: "Label 1", placeholder: "DO PRVE ISPLATE" },
+    { key: "counter1_sublabel", label: "Sublabel 1", placeholder: "Provereno" },
+    { key: "counter2_value", label: "Brojka 2", placeholder: "3" },
+    { key: "counter2_suffix", label: "Sufiks 2", placeholder: "" },
+    { key: "counter2_label", label: "Label 2", placeholder: "IZVORA ZARADE" },
+    { key: "counter2_sublabel", label: "Sublabel 2", placeholder: "Reels · Prodaja · Tim" },
+    { key: "counter3_value", label: "Brojka 3", placeholder: "4" },
+    { key: "counter3_suffix", label: "Sufiks 3", placeholder: "" },
+    { key: "counter3_label", label: "Label 3", placeholder: "NIVOA PROGRAMA" },
+    { key: "counter3_sublabel", label: "Sublabel 3", placeholder: "Regrut → Elite" },
+    { key: "counter4_value", label: "Brojka 4", placeholder: "100" },
+    { key: "counter4_suffix", label: "Sufiks 4", placeholder: "%" },
+    { key: "counter4_label", label: "Label 4", placeholder: "REAL-TIME" },
+    { key: "counter4_sublabel", label: "Sublabel 4", placeholder: "Sve transparentno" },
+  ] },
+  { title: "📖 Sekcija 1 — O programu", keys: [
+    { key: "s1_eyebrow", label: "Eyebrow", placeholder: "O programu" },
+    { key: "s1_title_main", label: "Naslov - prvi deo", placeholder: "Ne tražimo influensere već" },
+    { key: "s1_title_accent", label: "Naslov - obojeni deo", placeholder: "ljude koji žele da rastu uz nas." },
+    { key: "s1_text", label: "Opis (veci tekst)", placeholder: "VAMIT-5 Athlete Program je globalni partnerski program namenjen ljudima...", textarea: true },
+    { key: "s1_image1_url", label: "Slika 1 URL", placeholder: "https://..." },
+    { key: "s1_image2_url", label: "Slika 2 URL", placeholder: "https://..." },
+  ] },
+  { title: "⚙️ Sekcija 2 — Kako funkcioniše (3 koraka)", keys: [
+    { key: "s2_eyebrow", label: "Eyebrow", placeholder: "PROCES" },
+    { key: "s2_title_main", label: "Naslov - prvi deo", placeholder: "Kako" },
+    { key: "s2_title_accent", label: "Naslov - obojeni deo", placeholder: "funkcioniše" },
+    { key: "s2_title_end", label: "Naslov - kraj", placeholder: "?" },
+    { key: "s2_step1_emoji", label: "Korak 1 emoji", placeholder: "📝" },
+    { key: "s2_step1_title", label: "Korak 1 naslov", placeholder: "Prijavi se" },
+    { key: "s2_step1_text", label: "Korak 1 tekst", placeholder: "Popuni formular (klik na dugme). Traje 2 minuta." },
+    { key: "s2_step2_emoji", label: "Korak 2 emoji", placeholder: "🔑" },
+    { key: "s2_step2_title", label: "Korak 2 naslov", placeholder: "Dobijaš svoj kod" },
+    { key: "s2_step2_text", label: "Korak 2 tekst", placeholder: "Dobijaš svoj kod i pristup Athlete programu." },
+    { key: "s2_step3_emoji", label: "Korak 3 emoji", placeholder: "💸" },
+    { key: "s2_step3_title", label: "Korak 3 naslov", placeholder: "Zarađuješ" },
+    { key: "s2_step3_text", label: "Korak 3 tekst", placeholder: "Zarađuješ po svakom postavljenom Reelsu, prodaji VAMIT-5 app i kroz svoj tim.", textarea: true },
+  ] },
+  { title: "✨ Sekcija 3 — Benefiti (8 stavki, format: EMOJI|TEKST)", keys: [
+    { key: "s3_eyebrow", label: "Eyebrow", placeholder: "BENEFITI" },
+    { key: "s3_title_main", label: "Naslov - prvi deo", placeholder: "Šta dobija svaki" },
+    { key: "s3_title_accent", label: "Naslov - obojeni deo", placeholder: "Athlete" },
+    { key: "s3_title_end", label: "Naslov - kraj", placeholder: "?" },
+    { key: "s3_benefit1", label: "Benefit 1 (EMOJI|TEKST)", placeholder: "⚡|Instant zarada za svaki postavljeni reels" },
+    { key: "s3_benefit2", label: "Benefit 2", placeholder: "💎|TOP provizije od prodaje aplikacije" },
+    { key: "s3_benefit3", label: "Benefit 3", placeholder: "👥|Provizija od svog tima" },
+    { key: "s3_benefit4", label: "Benefit 4", placeholder: "🎓|Pristup Athlete edukaciji" },
+    { key: "s3_benefit5", label: "Benefit 5", placeholder: "🔗|Jedinstveni affiliate link" },
+    { key: "s3_benefit6", label: "Benefit 6", placeholder: "🤝|Svakodnevnu podršku VAMIT-5 tima" },
+    { key: "s3_benefit7", label: "Benefit 7", placeholder: "✈️|VAMIT-5 putovanja i eventsi" },
+    { key: "s3_benefit8", label: "Benefit 8", placeholder: "🔥|Brutalne mogućnosti za rast i razvoj" },
+  ] },
+  { title: "🎖️ Sekcija 4 — Nivoi (REGRUT, PRO, COMMANDO, ELITE)", keys: [
+    { key: "s4_eyebrow", label: "Eyebrow", placeholder: "PROGRES" },
+    { key: "s4_title_main", label: "Naslov - prvi deo", placeholder: "Četiri nivoa" },
+    { key: "s4_title_accent", label: "Naslov - obojeni deo", placeholder: "napredovanja" },
+    { key: "s4_subtitle", label: "Podnaslov", placeholder: "Svi dobijaju pristup VAMIT-5 Athlete programu. Iz nivoa u nivo provizija je veća.", textarea: true },
+    { key: "s4_regrut_emoji", label: "REGRUT - emoji", placeholder: "🎯" },
+    { key: "s4_regrut_name", label: "REGRUT - ime", placeholder: "REGRUT ATHLETE" },
+    { key: "s4_regrut_stars", label: "REGRUT - zvezdice", placeholder: "⭐" },
+    { key: "s4_regrut_bullets", label: "REGRUT - bullets (svaki red novi)", placeholder: "Pristup VAMIT-5 Athlete programu\nDirektna zarada po reelsu\n...", textarea: true },
+    { key: "s4_pro_emoji", label: "PRO - emoji", placeholder: "⚡" },
+    { key: "s4_pro_name", label: "PRO - ime", placeholder: "PRO ATHLETE" },
+    { key: "s4_pro_stars", label: "PRO - zvezdice", placeholder: "⭐⭐" },
+    { key: "s4_pro_bullets", label: "PRO - bullets", placeholder: "Sve kao kod REGRUT\nJoš veća provizija od prodaje app", textarea: true },
+    { key: "s4_commando_emoji", label: "COMMANDO - emoji", placeholder: "🚀" },
+    { key: "s4_commando_name", label: "COMMANDO - ime", placeholder: "COMMANDO ATHLETE" },
+    { key: "s4_commando_stars", label: "COMMANDO - zvezdice", placeholder: "⭐⭐⭐" },
+    { key: "s4_commando_bullets", label: "COMMANDO - bullets", placeholder: "Sve kao kod PRO\nJoš veća provizija od prodaje app", textarea: true },
+    { key: "s4_elite_emoji", label: "ELITE - emoji", placeholder: "👑" },
+    { key: "s4_elite_name", label: "ELITE - ime", placeholder: "ELITE ATHLETE" },
+    { key: "s4_elite_stars", label: "ELITE - zvezdice", placeholder: "⭐⭐⭐⭐" },
+    { key: "s4_elite_badge", label: "ELITE - badge (TOP TIER)", placeholder: "TOP TIER" },
+    { key: "s4_elite_subtitle", label: "ELITE - podnaslov", placeholder: "Maksimalan nivo programa. Pristup koji ima samo nekolicina." },
+    { key: "s4_elite_perks_title", label: "ELITE - naslov perks", placeholder: "Šta dobija ELITE Athlete" },
+    { key: "s4_elite_perks", label: "ELITE - perks (svaki red novi)", placeholder: "Najveća provizija\nPovećana zarada za sadržaj\n...", textarea: true },
+    { key: "s4_elite_image_url", label: "ELITE - slika URL", placeholder: "https://..." },
+  ] },
+  { title: "🔥 Sekcija 5 — Zašto VAMIT-5 (6 razloga, format: EMOJI|NASLOV|TEKST)", keys: [
+    { key: "s5_eyebrow", label: "Eyebrow", placeholder: "PREDNOSTI" },
+    { key: "s5_title_main", label: "Naslov - prvi deo", placeholder: "Zašto je VAMIT-5" },
+    { key: "s5_title_accent", label: "Naslov - obojeni deo", placeholder: "drugačiji" },
+    { key: "s5_title_end", label: "Naslov - kraj", placeholder: "?" },
+    { key: "s5_reason1", label: "Razlog 1 (EMOJI|NASLOV|TEKST)", placeholder: "⚡|Brza isplata|Odmah nakon postavljanja reelsa." },
+    { key: "s5_reason2", label: "Razlog 2", placeholder: "🌍|Globalna zajednica|Ekipa atleta sa svih strana." },
+    { key: "s5_reason3", label: "Razlog 3", placeholder: "🎯|Nemaš iskustva? Pokazujemo ti kako.|Sve što ti treba — od početka.", textarea: true },
+    { key: "s5_reason4", label: "Razlog 4", placeholder: "💸|3 izvora zarade|Reels, prodaja, tim." },
+    { key: "s5_reason5", label: "Razlog 5", placeholder: "📈|Jasan sistem napredovanja|Tačno znaš gde si i kako da napreduješ.", textarea: true },
+    { key: "s5_reason6", label: "Razlog 6", placeholder: "🤝|Pravi tim iza tebe|Bez kalkulacija. Bez praznih obećanja." },
+  ] },
+  { title: "📝 Sekcija 7 — Ko može da se prijavi (3 uslova)", keys: [
+    { key: "s7_eyebrow", label: "Eyebrow", placeholder: "PRIJAVA" },
+    { key: "s7_title_main", label: "Naslov - prvi deo", placeholder: "Ko može da se" },
+    { key: "s7_title_accent", label: "Naslov - obojeni deo", placeholder: "prijavi" },
+    { key: "s7_title_end", label: "Naslov - kraj", placeholder: "?" },
+    { key: "s7_req1", label: "Uslov 1 (EMOJI|TEKST)", placeholder: "🔞|18+ godina" },
+    { key: "s7_req2", label: "Uslov 2", placeholder: "🔥|Spremnost na konstantnost" },
+    { key: "s7_req3", label: "Uslov 3", placeholder: "📚|Želja za učenjem i napredovanjem" },
+  ] },
+  { title: "❓ Sekcija 8 — FAQ (5 pitanja)", keys: [
+    { key: "s8_eyebrow", label: "Eyebrow", placeholder: "FAQ" },
+    { key: "s8_title_main", label: "Naslov - prvi deo", placeholder: "Najčešća" },
+    { key: "s8_title_accent", label: "Naslov - obojeni deo", placeholder: "pitanja" },
+    { key: "s8_q1", label: "Pitanje 1", placeholder: "Da li moram imati Instagram pre početka?" },
+    { key: "s8_a1", label: "Odgovor 1", placeholder: "Bilo bi odlično da već imaš iskustva...", textarea: true },
+    { key: "s8_q2", label: "Pitanje 2", placeholder: "Koliko brzo mogu početi?" },
+    { key: "s8_a2", label: "Odgovor 2", placeholder: "Odmah danas...", textarea: true },
+    { key: "s8_q3", label: "Pitanje 3", placeholder: "Da li dobijam svoj affiliate link?" },
+    { key: "s8_a3", label: "Odgovor 3", placeholder: "Da, svaki atleta ima svoj link..." },
+    { key: "s8_q4", label: "Pitanje 4", placeholder: "Kako funkcioniše napredovanje?" },
+    { key: "s8_a4", label: "Odgovor 4", placeholder: "Kroz četiri nivoa — REGRUT, PRO, COMMANDO i ELITE...", textarea: true },
+    { key: "s8_q5", label: "Pitanje 5", placeholder: "Kako funkcionišu isplate?" },
+    { key: "s8_a5", label: "Odgovor 5", placeholder: "Dobićeš nalog gde ćeš moći pratiti svaki zarađeni evro...", textarea: true },
+  ] },
+  { title: "🎯 CTA (Final poziv na akciju)", keys: [
+    { key: "cta_badge", label: "Badge", placeholder: "FINALNI KORAK" },
+    { key: "cta_title_main", label: "Naslov - prvi deo", placeholder: "Pridruži se" },
+    { key: "cta_title_accent", label: "Naslov - obojeni deo (VAMIT-5)", placeholder: "VAMIT-5" },
+    { key: "cta_title_end", label: "Naslov - kraj", placeholder: "Athlete Programu." },
+    { key: "cta_subtitle", label: "Podnaslov", placeholder: "Počni danas. Razvij svoj tim...", textarea: true },
+    { key: "cta_button", label: "Dugme tekst", placeholder: "POSTANI VAMIT-5 ATHLETE" },
+    { key: "cta_subtext", label: "Pod-dugme tekst", placeholder: "POČNI ODMAH" },
+  ] },
+  { title: "🦶 Footer", keys: [
+    { key: "footer_brand", label: "Brand naslov", placeholder: "VAMIT-5" },
+    { key: "footer_subtitle", label: "Brand podnaslov", placeholder: "Athlete Program" },
+    { key: "footer_contact_label", label: "Kontakt label", placeholder: "Kontakt:" },
+    { key: "footer_contact_email", label: "Kontakt email", placeholder: "vamit5.team@gmail.com" },
+    { key: "footer_copyright", label: "Copyright tekst", placeholder: "Sva prava zadržana." },
+  ] },
+  { title: "🖼️ Slike (image break-evi)", keys: [
+    { key: "imagebreak1_url", label: "Image break 1 URL", placeholder: "https://..." },
+    { key: "imagebreak2_url", label: "Image break 2 URL", placeholder: "https://..." },
+    { key: "imagebreak3_url", label: "Image break 3 URL", placeholder: "https://..." },
+  ] },
+  { title: "🔗 Globalni linkovi", keys: [
+    { key: "form_url", label: "Google Form URL (Prijava)", placeholder: "https://docs.google.com/forms/..." },
+  ] },
 ];
 
 function AdminAffiliateSite() {
@@ -5518,23 +5624,27 @@ function AdminAffiliateSite() {
   const [loading, setLoading] = useState(true);
   const [savedKey, setSavedKey] = useState(null);
   const [openSec, setOpenSec] = useState({ 0: true });
+  const [search, setSearch] = useState('');
 
   useEffect(() => { load(); }, []);
   async function load() {
     setLoading(true);
-    const allKeys = AFFILIATE_SECTIONS.flatMap(s => s.keys.map(k => k.key));
-    const { data } = await supa.from('settings').select('key, value').in('key', allKeys);
+    // VAZNO: affiliate sajt koristi landing_content tabelu (key/value)
+    const { data, error } = await supa.from('landing_content').select('key, value');
+    if (error) {
+      console.error('Load landing_content fail:', error);
+      alert('Greška pri ucitavanju: ' + error.message + '\nProveri da postoji landing_content tabela.');
+    }
     const map = {};
-    (data || []).forEach(r => {
-      let v = r.value;
-      if (typeof v === 'object' && v !== null && 'v' in v) v = v.v;
-      map[r.key] = typeof v === 'string' ? v : JSON.stringify(v);
-    });
+    (data || []).forEach(r => { map[r.key] = r.value || ''; });
     setValues(map);
     setLoading(false);
   }
   async function saveSetting(key, value) {
-    const { error } = await supa.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    const { error } = await supa.from('landing_content').upsert(
+      { key, value, updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    );
     if (!error) { setSavedKey(key); setTimeout(() => setSavedKey(null), 1500); }
     else alert('Greška: ' + error.message);
   }
@@ -5544,54 +5654,73 @@ function AdminAffiliateSite() {
   return (
     <div className="space-y-4">
       <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-gold/30">
-        🌐 Ovde edituješ <strong>vamit5-affiliate.vercel.app</strong> — javni sajt sa kojim privlačiš nove atlete. Promene su <strong>odmah aktivne</strong> — atlete refresh-uju i vide novo.
+        🌐 Ovde edituješ <strong>vamit5-affiliate.vercel.app</strong> — SVAKI tekst i sliku sajta. Promene su <strong>odmah aktivne</strong> — refresh-uj sajt i vidiš novo. <strong>128 polja</strong> pokrivaju svaki paragraf.
       </div>
 
-      <div className="glass rounded-2xl p-4 border border-brand/30">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div className="text-sm font-bold">🔗 Pregled affiliate sajta uživo</div>
-            <div className="text-[11px] text-white/60">Otvori novi tab da vidiš trenutno stanje</div>
-          </div>
-          <a href="https://vamit5-affiliate.vercel.app/" target="_blank" rel="noopener"
-            className="px-4 py-2 rounded-xl bg-brand/15 border border-brand/40 text-brand text-xs font-bold">Otvori sajt ↗</a>
-        </div>
-      </div>
-
-      <div className="glass rounded-2xl p-4 border border-white/10">
-        <div className="text-sm font-bold mb-1">📁 GitHub repo (za slike, HTML, dizajn)</div>
-        <div className="text-[11px] text-white/60 mb-3">
-          Slike i HTML strukturu menjaš direktno u repo-u. Tekstove ovde dole.
-        </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <a href="https://vamit5-affiliate.vercel.app/" target="_blank" rel="noopener"
+          className="glass rounded-2xl p-4 border border-brand/30 hover:bg-brand/10 transition">
+          <div className="text-sm font-bold">🔗 Otvori sajt uživo ↗</div>
+          <div className="text-[11px] text-white/60 mt-1">vamit5-affiliate.vercel.app</div>
+        </a>
         <a href="https://github.com/vamit5/vamit5-affiliate" target="_blank" rel="noopener"
-          className="block px-4 py-2 rounded-xl bg-bg0 border border-white/10 text-xs font-mono text-brand break-all hover:bg-white/5">
-          github.com/vamit5/vamit5-affiliate
+          className="glass rounded-2xl p-4 border border-white/10 hover:bg-white/5 transition">
+          <div className="text-sm font-bold">📁 GitHub repo ↗</div>
+          <div className="text-[11px] text-white/60 mt-1">Za HTML, CSS, struktura</div>
         </a>
       </div>
 
-      {AFFILIATE_SECTIONS.map((sec, i) => (
-        <div key={i} className="glass-strong rounded-2xl overflow-hidden">
-          <button onClick={() => setOpenSec({ ...openSec, [i]: !openSec[i] })}
-            className="w-full p-4 flex items-center justify-between hover:bg-white/5">
-            <div className="font-display font-bold text-base text-left">{sec.title}</div>
-            <div className="text-2xl text-white/40">{openSec[i] ? '▼' : '▶'}</div>
-          </button>
-          {openSec[i] && (
-            <div className="border-t border-white/5 p-4 space-y-3">
-              {sec.keys.map(field => (
-                <SettingRow key={field.key}
-                  setting={{ key: field.key, label: field.label, placeholder: field.placeholder }}
-                  value={values[field.key] || ''}
-                  saved={savedKey === field.key}
-                  textarea={field.textarea}
-                  onChange={v => setValues({ ...values, [field.key]: v })}
-                  onSave={() => saveSetting(field.key, values[field.key] || '')}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+      {/* SEARCH */}
+      <input value={search} onChange={e=>setSearch(e.target.value)}
+        placeholder="🔍 Pretrazi po naslovu polja ili sadrzaju..."
+        className="w-full px-4 py-3 rounded-xl bg-bg1 border border-white/15 focus:border-brand outline-none text-sm"/>
+
+      <div className="flex gap-2">
+        <button onClick={()=>{ const all={}; AFFILIATE_SECTIONS.forEach((_,i)=>all[i]=true); setOpenSec(all); }}
+          className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs font-bold">Otvori sve sekcije</button>
+        <button onClick={()=>setOpenSec({})}
+          className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs font-bold">Zatvori sve</button>
+      </div>
+
+      {AFFILIATE_SECTIONS.map((sec, i) => {
+        // Filter sections by search
+        const q = search.toLowerCase().trim();
+        const filteredKeys = q
+          ? sec.keys.filter(f =>
+              f.label.toLowerCase().includes(q) ||
+              f.key.toLowerCase().includes(q) ||
+              (values[f.key] || f.placeholder || '').toLowerCase().includes(q))
+          : sec.keys;
+        if (q && filteredKeys.length === 0) return null;
+        const isOpen = q ? true : openSec[i]; // auto-open when searching
+
+        return (
+          <div key={i} className="glass-strong rounded-2xl overflow-hidden">
+            <button onClick={() => setOpenSec({ ...openSec, [i]: !openSec[i] })}
+              className="w-full p-4 flex items-center justify-between hover:bg-white/5">
+              <div className="font-display font-bold text-base text-left">
+                {sec.title}
+                <span className="ml-2 text-xs text-white/40">({filteredKeys.length})</span>
+              </div>
+              <div className="text-2xl text-white/40">{isOpen ? '▼' : '▶'}</div>
+            </button>
+            {isOpen && (
+              <div className="border-t border-white/5 p-4 space-y-3">
+                {filteredKeys.map(field => (
+                  <SettingRow key={field.key}
+                    setting={{ key: field.key, label: field.label, placeholder: field.placeholder }}
+                    value={values[field.key] || ''}
+                    saved={savedKey === field.key}
+                    textarea={field.textarea}
+                    onChange={v => setValues({ ...values, [field.key]: v })}
+                    onSave={() => saveSetting(field.key, values[field.key] || '')}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
