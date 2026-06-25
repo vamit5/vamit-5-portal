@@ -11,29 +11,9 @@
   "categories": ["business", "fitness", "social"],
   "lang": "sr-Latn",
   "icons": [
-    {
-      "src": "https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_192,h_192,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_512,h_512,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "https://res.cloudinary.com/dqqljgtna/image/upload/c_pad,w_192,h_192,b_black,f_png/v1778337005/VAMIT-5_k3xlfh.jpg",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "https://res.cloudinary.com/dqqljgtna/image/upload/c_pad,w_512,h_512,b_black,f_png/v1778337005/VAMIT-5_k3xlfh.jpg",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
