@@ -1,6 +1,7 @@
-// VAMIT-5 Portal Service Worker v10 — notif click absolute URL fix
-const VERSION = 'vamit5-v10';
-const LOGO_URL = '/vamit5-icon.svg?v=10';
+// VAMIT-5 Portal Service Worker v11 — push handler bulletproof
+const VERSION = 'vamit5-v11';
+// Direktan PNG URL (NIKAD ne pucne, fallback ako lokalni icon ne radi)
+const LOGO_URL = 'https://res.cloudinary.com/dqqljgtna/image/upload/c_fill,w_192,h_192,q_auto,f_png/v1778337005/VAMIT-5_k3xlfh.jpg';
 
 self.addEventListener('install', (e) => {
   console.log('[SW] install v7');
@@ -31,15 +32,21 @@ self.addEventListener('fetch', (e) => {
 });
 
 // ============================================================
-// PUSH NOTIFICATIONS — iOS + Android, sa brand prefix + logo
+// PUSH NOTIFICATIONS — BULLETPROOF iOS + Android
+// 3-koraka fallback: ako icon URL ne radi, pokaze bez ikona;
+// ako payload je los, pokaze generic poruku.
 // ============================================================
 self.addEventListener('push', (e) => {
-  console.log('[SW] push event');
+  console.log('[SW] push event arrived');
+  e.waitUntil(handlePush(e));
+});
 
+async function handlePush(e) {
   let data = {};
   try {
     if (e.data) {
       const txt = e.data.text();
+      console.log('[SW] push raw payload:', txt.slice(0, 200));
       try { data = JSON.parse(txt); } catch { data = { title: 'VAMIT-5', body: txt }; }
     }
   } catch (err) {
@@ -47,30 +54,46 @@ self.addEventListener('push', (e) => {
     data = { title: 'VAMIT-5', body: 'Nova aktivnost' };
   }
 
-  // Brand prefix u title-u tako da atleta zna od koga je notifikacija
   const rawTitle = data.title || 'Notifikacija';
   const title = rawTitle.startsWith('VAMIT-5') ? rawTitle : 'VAMIT-5 · ' + rawTitle;
+  const body = data.body || '';
+  const tag = data.tag || ('vamit5-' + Date.now());
+  const urlForClick = data.action_url || '/#/dashboard';
 
-  // VAZNO: NE postavljamo 'badge' jer Android trazi monochrome 24x24 PNG;
-  // bilo koja druga slika se prikazuje kao bela kutija. Ako ga ne postavimo,
-  // Android koristi 'icon' kao fallback.
-  const options = {
-    body: data.body || '',
-    icon: LOGO_URL,
-    tag: data.tag || 'vamit5-' + Date.now(),
-    data: { url: data.action_url || '/#/dashboard' },
-    vibrate: [200, 100, 200],
-    requireInteraction: data.priority === 'celebration',
-    renotify: true,
-    silent: false
-  };
+  // STEP 1: sa icon-om (best look)
+  try {
+    await self.registration.showNotification(title, {
+      body, icon: LOGO_URL, tag,
+      data: { url: urlForClick },
+      vibrate: [200, 100, 200],
+      requireInteraction: data.priority === 'celebration',
+      renotify: true, silent: false
+    });
+    console.log('[SW] notification OK (with icon):', title);
+    return;
+  } catch (err1) {
+    console.warn('[SW] showNotification fail with icon:', err1);
+  }
 
-  e.waitUntil(
-    self.registration.showNotification(title, options)
-      .then(() => console.log('[SW] notification shown:', title))
-      .catch(err => console.error('[SW] showNotification fail:', err))
-  );
-});
+  // STEP 2: bez icon (fallback)
+  try {
+    await self.registration.showNotification(title, {
+      body, tag, data: { url: urlForClick }, renotify: true
+    });
+    console.log('[SW] notification OK (no icon)');
+    return;
+  } catch (err2) {
+    console.warn('[SW] showNotification fail no icon:', err2);
+  }
+
+  // STEP 3: minimalna poruka (poslednji izbor)
+  try {
+    await self.registration.showNotification('VAMIT-5', { body: 'Nova aktivnost' });
+    console.log('[SW] notification OK (minimal)');
+  } catch (err3) {
+    console.error('[SW] showNotification COMPLETELY FAILED:', err3);
+  }
+}
 
 // Klik na notifikaciju → otvori PWA na zadatoj ruti
 self.addEventListener('notificationclick', (e) => {
