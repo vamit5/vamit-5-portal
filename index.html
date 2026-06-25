@@ -5629,11 +5629,10 @@ function AdminAffiliateSite() {
   useEffect(() => { load(); }, []);
   async function load() {
     setLoading(true);
-    // VAZNO: affiliate sajt koristi landing_content tabelu (key/value)
     const { data, error } = await supa.from('landing_content').select('key, value');
     if (error) {
-      console.error('Load landing_content fail:', error);
-      alert('Greška pri ucitavanju: ' + error.message + '\nProveri da postoji landing_content tabela.');
+      console.error('[AFFILIATE-CMS] Load fail:', error);
+      alert('Učitavanje neuspešno:\n' + error.message + '\n\nKod: ' + (error.code || 'n/a') + '\n\nProveri da je SQL portal-LANDING-CONTENT-BULLETPROOF-SQL.sql pokrenuto.');
     }
     const map = {};
     (data || []).forEach(r => { map[r.key] = r.value || ''; });
@@ -5641,12 +5640,27 @@ function AdminAffiliateSite() {
     setLoading(false);
   }
   async function saveSetting(key, value) {
-    const { error } = await supa.from('landing_content').upsert(
+    console.log('[AFFILIATE-CMS] Saving', key, '→', value?.slice(0, 60));
+    const { data, error } = await supa.from('landing_content').upsert(
       { key, value, updated_at: new Date().toISOString() },
       { onConflict: 'key' }
-    );
-    if (!error) { setSavedKey(key); setTimeout(() => setSavedKey(null), 1500); }
-    else alert('Greška: ' + error.message);
+    ).select();
+    if (!error) {
+      console.log('[AFFILIATE-CMS] OK:', data);
+      setSavedKey(key);
+      setTimeout(() => setSavedKey(null), 1500);
+    } else {
+      console.error('[AFFILIATE-CMS] Save fail:', error);
+      alert('Greška pri snimanju:\n\n' +
+            'Polje: ' + key + '\n' +
+            'Poruka: ' + error.message + '\n' +
+            'Kod: ' + (error.code || 'n/a') + '\n' +
+            'Detalj: ' + (error.details || error.hint || 'nema') + '\n\n' +
+            '🛠️ Šta da uradiš:\n' +
+            '1. Pokreni portal-LANDING-CONTENT-BULLETPROOF-SQL.sql u Supabase\n' +
+            '2. Proveri u console (F12) detaljnu poruku\n' +
+            '3. Pošalji screenshot ovog alert-a programeru');
+    }
   }
 
   if (loading) return <div className="text-center py-10 text-white/50">Učitavam...</div>;
