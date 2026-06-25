@@ -92,7 +92,7 @@ const LOGO = "/vamit5-icon.svg";
 const FORM_URL = "https://vamit-5-2.getrewardful.com/signup";
 
 const LEVEL_THEME = {
-  recruit:  { color:'#a6ff3b', name:'RECRUIT', emoji:'🎯', glow:'glow-recruit' },
+  recruit:  { color:'#a6ff3b', name:'REGRUT', emoji:'🎯', glow:'glow-recruit' },
   pro:      { color:'#3b82f6', name:'PRO',     emoji:'⚡', glow:'glow-pro' },
   commando: { color:'#a855f7', name:'COMMANDO', emoji:'🚀', glow:'glow-commando' },
   elite:    { color:'#ffc24b', name:'ELITE',   emoji:'👑', glow:'glow-elite' }
@@ -238,6 +238,15 @@ function t(key, fallback) {
   if (v === undefined || v === null || v === '') return fallback || '';
   return v;
 }
+// Interpolacija u CMS tekstovima — {x} → vars.x
+function tInterp(key, fallback, vars) {
+  let s = t(key, fallback);
+  if (!vars) return s;
+  Object.keys(vars).forEach(k => {
+    s = s.split('{' + k + '}').join(String(vars[k]));
+  });
+  return s;
+}
 async function loadPortalTexts() {
   try {
     const { data } = await supa.from('settings').select('key, value').like('key', 'portal_%');
@@ -305,9 +314,25 @@ function VamitMark({ size = 36 }) {
 
 function Logo({size='md'}) {
   const pixelSize = size === 'lg' ? 48 : 36;
+  const [iconUrl, setIconUrl] = useState(null);
+
+  useEffect(() => {
+    // Pokusaj da povuces app_icon_url iz settings (ako admin postavi sopstvenu ikonu)
+    supa.from('settings').select('value').eq('key', 'app_icon_url').maybeSingle().then(({ data }) => {
+      let v = data?.value;
+      if (typeof v === 'object' && v !== null && 'v' in v) v = v.v;
+      if (typeof v === 'string' && v.trim().length > 0) setIconUrl(v);
+    });
+  }, []);
+
   return (
     <a href="#/" className="flex items-center gap-2 group">
-      <VamitMark size={pixelSize}/>
+      {iconUrl ? (
+        <img src={iconUrl} alt="VAMIT-5" width={pixelSize} height={pixelSize}
+          style={{ width: pixelSize, height: pixelSize, borderRadius: pixelSize * 0.22, objectFit: 'cover' }}/>
+      ) : (
+        <VamitMark size={pixelSize}/>
+      )}
       <div>
         <div className="font-black text-sm sm:text-base leading-tight">VAMIT-5</div>
         <div className="text-[9px] sm:text-[10px] tracking-[0.18em] text-white/50 uppercase font-bold">Athlete Portal</div>
@@ -1311,7 +1336,9 @@ function Dashboard({ athlete, profile }) {
         {/* === LEVEL PROGRESS CARD (Reels, Sales, Days) === */}
         <div className="space-y-3 mt-4">
           <div className="text-xs uppercase tracking-wider text-white/60 font-bold">
-            {target.next ? `Tvoj cilj — napreduj na ${LEVEL_THEME[target.next].name}` : 'Top tier — održavaj ritam'}
+            {target.next
+              ? `${t('portal_progress_target_prefix','Tvoj cilj — napreduj na')} ${LEVEL_THEME[target.next].name}`
+              : t('portal_progress_top_tier_text','Top tier — održavaj ritam')}
           </div>
 
           {/* Reels bar */}
@@ -1330,7 +1357,13 @@ function Dashboard({ athlete, profile }) {
               <div className="h-full rounded-full transition-all" style={{ width: reelsPct+'%', background: theme.color }}/>
             </div>
             <div className="text-[11px] text-white/50 mt-1.5">
-              {reelsRemaining > 0 ? `Ostalo još ${reelsRemaining} reels-ova` : '✓ Ispunio cilj reels-ova!'}
+              {reelsRemaining > 0
+                ? tInterp('portal_progress_reels_remaining_tpl',
+                    `Ostalo još {x} reels-ova ${target.next ? 'do {next}' : ''}`,
+                    { x: reelsRemaining, next: target.next ? LEVEL_THEME[target.next].name : '' })
+                : tInterp('portal_progress_reels_done_tpl',
+                    `✓ Ispunio cilj reels-ova ${target.next ? 'za {next}' : ''}!`,
+                    { next: target.next ? LEVEL_THEME[target.next].name : '' })}
             </div>
           </div>
 
@@ -1350,7 +1383,13 @@ function Dashboard({ athlete, profile }) {
               <div className="h-full rounded-full bg-brand transition-all" style={{ width: salesPct+'%' }}/>
             </div>
             <div className="text-[11px] text-white/50 mt-1.5">
-              {salesRemaining > 0 ? `Ostalo još ${salesRemaining} prodaja` : '✓ Ispunio cilj prodaja!'}
+              {salesRemaining > 0
+                ? tInterp('portal_progress_sales_remaining_tpl',
+                    `Ostalo još {x} prodaja ${target.next ? 'do {next}' : ''}`,
+                    { x: salesRemaining, next: target.next ? LEVEL_THEME[target.next].name : '' })
+                : tInterp('portal_progress_sales_done_tpl',
+                    `✓ Ispunio cilj prodaja ${target.next ? 'za {next}' : ''}!`,
+                    { next: target.next ? LEVEL_THEME[target.next].name : '' })}
             </div>
           </div>
 
@@ -1361,7 +1400,9 @@ function Dashboard({ athlete, profile }) {
                 <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">⏱️ Vreme</div>
                 <div className="font-display font-black text-xl">
                   <span className="text-gold">{daysRemaining}</span>
-                  <span className="text-white/30 text-sm"> dana ostalo</span>
+                  <span className="text-white/30 text-sm"> {target.next
+                    ? tInterp('portal_progress_days_remaining_tpl', 'dana do {next}', { x: daysRemaining, next: LEVEL_THEME[target.next].name })
+                    : 'dana'}</span>
                 </div>
               </div>
               <div className="text-[11px] text-white/40">Dan {daysSinceLevelStart} / {target.days}</div>
@@ -1373,7 +1414,7 @@ function Dashboard({ athlete, profile }) {
 
           {introActive && (
             <div className="p-3 rounded-xl bg-lime/10 border border-lime/30 text-xs sm:text-sm">
-              ✅ <b className="text-lime">Bonus za RECRUIT:</b> zaradu od reels-ova dobijaš ODMAH na račun (bez čekanja prodaja). Bonus aktivan još <b>{daysRemaining} dana</b>.
+              ✅ <b className="text-lime">Bonus za REGRUT:</b> zaradu od reels-ova dobijaš ODMAH na račun (bez čekanja prodaja). Bonus aktivan još <b>{daysRemaining} dana</b>.
             </div>
           )}
         </div>
@@ -5125,6 +5166,22 @@ function AdminNotifications() {
       total += chunk.length;
     }
 
+    // KRITICNO: pozovi send-push za SVAKOG atletu da push stigne na telefon
+    let pushSentCount = 0;
+    for (const athId of targetIds) {
+      try {
+        const { data: pd } = await supa.functions.invoke('send-push', {
+          body: {
+            athlete_id: athId,
+            title, body, icon,
+            action_url: actionUrl || '/#/dashboard',
+            priority
+          }
+        });
+        if (pd?.sent > 0) pushSentCount += pd.sent;
+      } catch(e) { console.warn('push fail for', athId, e); }
+    }
+
     // Sačuvaj kao campaign
     await supa.from('notification_campaigns').insert({
       name: title,
@@ -5134,7 +5191,7 @@ function AdminNotifications() {
     });
 
     setSending(false);
-    setLastResult({ count: total });
+    setLastResult({ count: total, pushed: pushSentCount });
     setTitle(''); setBody(''); setActionUrl('');
     loadCampaigns();
   }
@@ -5398,7 +5455,7 @@ function TemplateEditor({ tpl, saving, onSave }) {
 
 const TEMPLATE_LABELS = {
   welcome:           '👋 Dobrodošlica (kad atleta prvi put se loguje)',
-  level_up:          '🎉 Promocija nivoa (RECRUIT→PRO itd.)',
+  level_up:          '🎉 Promocija nivoa (REGRUT→PRO itd.)',
   reel_approved:     '✅ Reel odobren',
   reel_rejected:     '❌ Reel odbijen',
   payout_paid:       '💰 Isplata izvršena',
@@ -5549,6 +5606,16 @@ const LANDING_SECTIONS = [
     { key:'portal_push_payout_paid_body', label:'Isplata telo', placeholder:'Tvoja isplata od €{amount} je poslata.' },
     { key:'portal_push_welcome', label:'Welcome naslov', placeholder:'👋 Dobrodošao u VAMIT-5!' },
     { key:'portal_push_welcome_body', label:'Welcome telo', placeholder:'Tvoj nalog je spreman. Postavi prvi Reel da zaradiš.', textarea:true },
+  ]},
+  { title:'📅 Progres tekstovi (do sledeceg nivoa)', keys: [
+    { key:'portal_progress_target_prefix', label:'Prefix iznad progres bara', placeholder:'Tvoj cilj — napreduj na' },
+    { key:'portal_progress_top_tier_text', label:'Tekst za TOP tier (ELITE)', placeholder:'Top tier — održavaj ritam' },
+    { key:'portal_progress_reels_remaining_tpl', label:'Reels preostalo template ({x}={broj}, {next}={nivo})', placeholder:'Ostalo još {x} reels-ova do {next}', textarea:true },
+    { key:'portal_progress_reels_done_tpl', label:'Reels ispunjeno template', placeholder:'✓ Ispunio cilj reels-ova za {next}!', textarea:true },
+    { key:'portal_progress_sales_remaining_tpl', label:'Prodaje preostalo template', placeholder:'Ostalo još {x} prodaja do {next}', textarea:true },
+    { key:'portal_progress_sales_done_tpl', label:'Prodaje ispunjeno template', placeholder:'✓ Ispunio cilj prodaja za {next}!', textarea:true },
+    { key:'portal_progress_days_remaining_tpl', label:'Dani preostalo template', placeholder:'{x} dana do {next}', textarea:true },
+    { key:'portal_progress_intro_bonus_tpl', label:'REGRUT intro bonus tekst', placeholder:'Bonus za REGRUT: zaradu od reels-ova dobijaš ODMAH. Bonus aktivan još {days} dana.', textarea:true },
   ]},
   { title:'🎖️ Nivoi atleta (REGRUT, PRO, COMMANDO, ELITE)', keys: [
     { key:'portal_level_recruit_name', label:'REGRUT — ime', placeholder:'REGRUT' },
@@ -5966,7 +6033,7 @@ function App() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       // Registruj sa updateViaCache 'none' da uvek povuce nov sw.js
-      navigator.serviceWorker.register('/sw.js?v=9', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('/sw.js?v=10', { updateViaCache: 'none' })
         .then(reg => { reg.update(); })
         .catch(err => console.log('SW reg failed:', err));
     }
