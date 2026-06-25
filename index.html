@@ -3216,6 +3216,7 @@ function AdminPage() {
           {k:'notifications', label:'🔔 Broadcast'},
           {k:'templates',     label:'📨 Notif. Templates'},
           {k:'landing',       label:'📝 Portal CMS'},
+          {k:'affiliate',     label:'🌐 Affiliate Sajt'},
           {k:'links',         label:'🔗 Linkovi'},
           {k:'appicon',       label:'🖼️ App Ikona'},
           {k:'settings',      label:'⚙️ Podešavanja'},
@@ -3237,6 +3238,7 @@ function AdminPage() {
       {tab==='notifications' && <AdminNotifications/>}
       {tab==='templates' && <AdminNotifTemplates/>}
       {tab==='landing' && <AdminLanding/>}
+      {tab==='affiliate' && <AdminAffiliateSite/>}
       {tab==='links' && <AdminLinks/>}
       {tab==='appicon' && <AdminAppIcon/>}
       {tab==='settings' && <AdminSettings/>}
@@ -5447,6 +5449,153 @@ const TEMPLATE_LABELS = {
 // =====================================================
 // === ADMIN: LANDING CMS (Edit oficijelni sajt) ===
 // =====================================================
+// === AFFILIATE SITE CMS — za vamit5-affiliate.vercel.app ===
+// Sva tekstualna i slika polja affiliate sajta. Sajt ih cita iz settings tabele dinamicki.
+const AFFILIATE_SECTIONS = [
+  { title:'🖼️ Hero (vrh stranice)', keys: [
+    { key:'landing_logo_url', label:'Logo URL', placeholder:'https://res.cloudinary.com/...' },
+    { key:'landing_hero_image', label:'Hero pozadinska slika URL (opciono)', placeholder:'https://...' },
+    { key:'landing_hero_kicker', label:'Mali tekst iznad naslova', placeholder:'PRIJAVE OTVORENE' },
+    { key:'landing_hero_title', label:'Hero naslov (veliki)', placeholder:'Zaradi kroz trening — postani 100% atleta', textarea:true },
+    { key:'landing_hero_subtitle', label:'Hero podnaslov', placeholder:'Prvi fitness affiliate program u regionu gde tvoj trud postaje doživotni prihod.', textarea:true },
+  ]},
+  { title:'🚀 Glavna dugmad (CTA)', keys: [
+    { key:'landing_cta_primary_text', label:'Primary dugme tekst', placeholder:'Postani VAMIT-5 atleta' },
+    { key:'landing_cta_primary_url', label:'Primary dugme link', placeholder:'https://vamit-5-2.getrewardful.com/signup' },
+    { key:'landing_cta_secondary_text', label:'Secondary dugme tekst', placeholder:'Već imam nalog' },
+    { key:'landing_cta_secondary_url', label:'Secondary dugme link', placeholder:'https://vamit-5-portal.vercel.app/#/login' },
+  ]},
+  { title:'📊 Stats (3 velika broja)', keys: [
+    { key:'landing_stats_athletes', label:'Brojka 1', placeholder:'500+' },
+    { key:'landing_stats_label_1', label:'Label 1', placeholder:'Aktivnih atleta' },
+    { key:'landing_stats_paid', label:'Brojka 2', placeholder:'€50,000+' },
+    { key:'landing_stats_label_2', label:'Label 2', placeholder:'Isplaćeno do sada' },
+    { key:'landing_stats_reels', label:'Brojka 3', placeholder:'10,000+' },
+    { key:'landing_stats_label_3', label:'Label 3', placeholder:'Reels-ova postavljeno' },
+  ]},
+  { title:'⚙️ Kako radi (3 koraka)', keys: [
+    { key:'landing_how_title', label:'Sekcija naslov', placeholder:'Kako VAMIT-5 radi' },
+    { key:'landing_how_step1_title', label:'Korak 1 — naslov', placeholder:'1. Registruj se' },
+    { key:'landing_how_step1_text', label:'Korak 1 — tekst', placeholder:'Klikni "Postani atleta", napravi nalog za 2 minuta.', textarea:true },
+    { key:'landing_how_step2_title', label:'Korak 2 — naslov', placeholder:'2. Postavi Reels' },
+    { key:'landing_how_step2_text', label:'Korak 2 — tekst', placeholder:'Snimaj 30-sekundne treninge na Instagramu. Admin odobri, ti zarađuješ.', textarea:true },
+    { key:'landing_how_step3_title', label:'Korak 3 — naslov', placeholder:'3. Zarađuj' },
+    { key:'landing_how_step3_text', label:'Korak 3 — tekst', placeholder:'Po reel-u + provizija po prodaji + tim sistem = doživotni prihod.', textarea:true },
+  ]},
+  { title:'🎖️ Nivoi (4 kartice)', keys: [
+    { key:'landing_levels_title', label:'Sekcija naslov', placeholder:'4 nivoa napredovanja' },
+    { key:'landing_levels_subtitle', label:'Podnaslov', placeholder:'Napreduješ konzistentnošću — automatski rasti svoj prihod' },
+    { key:'landing_level_recruit_desc', label:'REGRUT opis', placeholder:'Početni nivo. 35% provizije od paketa + €0.25/reel + 15% od tima.', textarea:true },
+    { key:'landing_level_pro_desc', label:'PRO opis', placeholder:'40% paketa + €0.30/reel + 15% tim + VAMIT-5 merchandise.', textarea:true },
+    { key:'landing_level_commando_desc', label:'COMMANDO opis', placeholder:'45% paketa + €0.35/reel + 20% tim + premium merchandise.', textarea:true },
+    { key:'landing_level_elite_desc', label:'ELITE opis', placeholder:'50% paketa + €0.40/reel + 25% tim + putovanja + eventi + fixna plata.', textarea:true },
+  ]},
+  { title:'❓ FAQ (3 pitanja)', keys: [
+    { key:'landing_faq_title', label:'FAQ naslov', placeholder:'Često pitana pitanja' },
+    { key:'landing_faq_q1', label:'Pitanje 1', placeholder:'Da li moram da plaćam nešto?' },
+    { key:'landing_faq_a1', label:'Odgovor 1', placeholder:'Ne. Registracija je 100% besplatna. Zarađuješ od dana 1.', textarea:true },
+    { key:'landing_faq_q2', label:'Pitanje 2', placeholder:'Koliko brzo dobijam isplate?' },
+    { key:'landing_faq_a2', label:'Odgovor 2', placeholder:'12-24h posle zahteva. REGRUT bez minimuma, ostali min €10.', textarea:true },
+    { key:'landing_faq_q3', label:'Pitanje 3', placeholder:'Mogu li da otkažem?' },
+    { key:'landing_faq_a3', label:'Odgovor 3', placeholder:'Da, bilo kad. Nema ugovora ni kazne. Slobodan si.', textarea:true },
+  ]},
+  { title:'🦶 Footer + Social', keys: [
+    { key:'landing_footer_text', label:'Footer tekst', placeholder:'© VAMIT-5 2026. Sva prava zadržana.' },
+    { key:'landing_contact_email', label:'Kontakt email', placeholder:'support@vamit-5.com' },
+    { key:'landing_instagram_url', label:'Instagram URL', placeholder:'https://instagram.com/vamit_5_official' },
+    { key:'landing_tiktok_url', label:'TikTok URL', placeholder:'https://tiktok.com/@vamit_5' },
+    { key:'landing_youtube_url', label:'YouTube URL', placeholder:'https://youtube.com/@vamit5' },
+    { key:'landing_main_site_url', label:'Glavni sajt URL', placeholder:'https://vamit-5.com' },
+  ]},
+  { title:'🌐 SEO Meta', keys: [
+    { key:'landing_meta_title', label:'Browser tab title', placeholder:'VAMIT-5 — Postani 100% atleta' },
+    { key:'landing_meta_description', label:'Meta description', placeholder:'Prvi fitness affiliate program u regionu. Zaradi kroz trening.', textarea:true },
+  ]},
+];
+
+function AdminAffiliateSite() {
+  const [values, setValues] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savedKey, setSavedKey] = useState(null);
+  const [openSec, setOpenSec] = useState({ 0: true });
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    const allKeys = AFFILIATE_SECTIONS.flatMap(s => s.keys.map(k => k.key));
+    const { data } = await supa.from('settings').select('key, value').in('key', allKeys);
+    const map = {};
+    (data || []).forEach(r => {
+      let v = r.value;
+      if (typeof v === 'object' && v !== null && 'v' in v) v = v.v;
+      map[r.key] = typeof v === 'string' ? v : JSON.stringify(v);
+    });
+    setValues(map);
+    setLoading(false);
+  }
+  async function saveSetting(key, value) {
+    const { error } = await supa.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (!error) { setSavedKey(key); setTimeout(() => setSavedKey(null), 1500); }
+    else alert('Greška: ' + error.message);
+  }
+
+  if (loading) return <div className="text-center py-10 text-white/50">Učitavam...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-gold/30">
+        🌐 Ovde edituješ <strong>vamit5-affiliate.vercel.app</strong> — javni sajt sa kojim privlačiš nove atlete. Promene su <strong>odmah aktivne</strong> — atlete refresh-uju i vide novo.
+      </div>
+
+      <div className="glass rounded-2xl p-4 border border-brand/30">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-bold">🔗 Pregled affiliate sajta uživo</div>
+            <div className="text-[11px] text-white/60">Otvori novi tab da vidiš trenutno stanje</div>
+          </div>
+          <a href="https://vamit5-affiliate.vercel.app/" target="_blank" rel="noopener"
+            className="px-4 py-2 rounded-xl bg-brand/15 border border-brand/40 text-brand text-xs font-bold">Otvori sajt ↗</a>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-4 border border-white/10">
+        <div className="text-sm font-bold mb-1">📁 GitHub repo (za slike, HTML, dizajn)</div>
+        <div className="text-[11px] text-white/60 mb-3">
+          Slike i HTML strukturu menjaš direktno u repo-u. Tekstove ovde dole.
+        </div>
+        <a href="https://github.com/vamit5/vamit5-affiliate" target="_blank" rel="noopener"
+          className="block px-4 py-2 rounded-xl bg-bg0 border border-white/10 text-xs font-mono text-brand break-all hover:bg-white/5">
+          github.com/vamit5/vamit5-affiliate
+        </a>
+      </div>
+
+      {AFFILIATE_SECTIONS.map((sec, i) => (
+        <div key={i} className="glass-strong rounded-2xl overflow-hidden">
+          <button onClick={() => setOpenSec({ ...openSec, [i]: !openSec[i] })}
+            className="w-full p-4 flex items-center justify-between hover:bg-white/5">
+            <div className="font-display font-bold text-base text-left">{sec.title}</div>
+            <div className="text-2xl text-white/40">{openSec[i] ? '▼' : '▶'}</div>
+          </button>
+          {openSec[i] && (
+            <div className="border-t border-white/5 p-4 space-y-3">
+              {sec.keys.map(field => (
+                <SettingRow key={field.key}
+                  setting={{ key: field.key, label: field.label, placeholder: field.placeholder }}
+                  value={values[field.key] || ''}
+                  saved={savedKey === field.key}
+                  textarea={field.textarea}
+                  onChange={v => setValues({ ...values, [field.key]: v })}
+                  onSave={() => saveSetting(field.key, values[field.key] || '')}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // === PORTAL CMS — sva tekstualna polja portala koja admin moze editovati ===
 // Tekstovi se citaju iz public.settings tabele preko t(key, fallback) helpera (vidi App komponentu)
 const LANDING_SECTIONS = [
