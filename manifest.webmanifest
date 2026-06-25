@@ -11,9 +11,9 @@
   "categories": ["business", "fitness", "social"],
   "lang": "sr-Latn",
   "icons": [
-    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782368785120.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782370020272.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782370020272.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782370020272.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "https://bauuhowpbrqqmojqnqbr.supabase.co/storage/v1/object/public/avatars/app-icon-1782370020272.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
