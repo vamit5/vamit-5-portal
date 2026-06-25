@@ -4406,6 +4406,14 @@ function AdminLinks() {
 }
 
 function SettingRow({ setting, value, saved, onChange, onSave, textarea }) {
+  // Detekcija da li je polje za sliku — pokazi thumbnail
+  const isImageField = /(_url|image|logo|avatar|icon|photo|picture)$/i.test(setting.key)
+    || setting.key.includes('image')
+    || setting.key.includes('logo');
+  // Validna URL ili data URI
+  const previewUrl = isImageField && value && /^(https?:|data:)/.test(value) ? value : null;
+  const fallbackUrl = isImageField && setting.placeholder && /^(https?:|data:)/.test(setting.placeholder) ? setting.placeholder : null;
+
   return (
     <div className="glass rounded-2xl p-4">
       <div className="flex items-center justify-between mb-2 gap-3">
@@ -4418,6 +4426,33 @@ function SettingRow({ setting, value, saved, onChange, onSave, textarea }) {
           {saved ? '✓ Sačuvano' : 'Sačuvaj'}
         </button>
       </div>
+
+      {/* IMAGE PREVIEW THUMBNAIL */}
+      {isImageField && (
+        <div className="flex items-start gap-3 mb-3">
+          <a href={previewUrl || fallbackUrl || '#'} target="_blank" rel="noopener"
+            className="shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-bg0 border border-white/15 hover:border-brand transition flex items-center justify-center">
+            {(previewUrl || fallbackUrl) ? (
+              <img src={previewUrl || fallbackUrl}
+                alt="preview"
+                className="w-full h-full object-cover"
+                onError={(e)=>{ e.target.style.display='none'; e.target.parentNode.innerHTML='<div class=&quot;text-[10px] text-danger text-center px-1&quot;>❌<br/>Slika ne ucitava</div>'; }}/>
+            ) : (
+              <div className="text-[10px] text-white/40 text-center px-1">📷<br/>Nema slike</div>
+            )}
+          </a>
+          <div className="flex-1 min-w-0 text-[10px] text-white/50 leading-snug">
+            {previewUrl ? (
+              <>📷 Trenutna slika. Klikni thumbnail da otvoriš punu veličinu.</>
+            ) : fallbackUrl ? (
+              <>📷 Default (placeholder). Unesi svoj URL i sačuvaj.</>
+            ) : (
+              <>Zalepi link slike (Cloudinary, Supabase Storage, ili bilo koji javni URL).</>
+            )}
+          </div>
+        </div>
+      )}
+
       {textarea ? (
         <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={setting.placeholder||''} rows={3}
           className="w-full px-3 py-2.5 rounded-xl bg-bg1 border border-white/10 focus:border-brand outline-none text-sm resize-none"/>
