@@ -5340,16 +5340,40 @@ async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
     if (error) { console.error('Notif insert greška:', error); return; }
 
     // Pozovi send-push edge funkciju da poslje push na telefon (kad PWA zatvorena)
+    // BULLETPROOF: pokušaj 2 nacina ako jedan ne radi.
+    // (DB trigger je SLOJ 1 i radi nezavisno — ovo je dodatna sigurnost iz klijenta)
+    const pushPayload = {
+      athlete_id: athleteId, title, body, icon,
+      action_url: actionUrl || '/#/dashboard', priority
+    };
+    let pushOK = false;
+    // Pokušaj 1: supa.functions.invoke (sa user JWT)
     try {
-      await supa.functions.invoke('send-push', {
-        body: {
-          athlete_id: athleteId,
-          title, body, icon, action_url: actionUrl, priority
+      const { data: r1, error: e1 } = await supa.functions.invoke('send-push', { body: pushPayload });
+      if (!e1 && r1?.ok) { pushOK = true; console.log('[VAMIT] push OK via invoke', r1); }
+      else console.warn('[VAMIT] invoke not ok:', e1 || r1);
+    } catch(pushErr) { console.warn('[VAMIT] invoke threw:', pushErr); }
+
+    // Pokušaj 2: direktan fetch (uzima current session token)
+    if (!pushOK) {
+      try {
+        const { data: s } = await supa.auth.getSession();
+        const token = s?.session?.access_token;
+        if (token) {
+          const res = await fetch('https://bauuhowpbrqqmojqnqbr.supabase.co/functions/v1/send-push', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token,
+              'apikey': token
+            },
+            body: JSON.stringify(pushPayload)
+          });
+          console.log('[VAMIT] push via direct fetch:', res.status);
         }
-      });
-    } catch(pushErr) {
-      console.warn('send-push invoke fail (non-blocking):', pushErr);
+      } catch(fetchErr) { console.warn('[VAMIT] direct fetch fail:', fetchErr); }
     }
+    // SLOJ 1 (DB trigger) i dalje radi nezavisno — push uvek prolazi.
   } catch(e) { console.error('sendTemplated err:', e); }
 }
 
@@ -6033,7 +6057,7 @@ function App() {
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       // Registruj sa updateViaCache 'none' da uvek povuce nov sw.js
-      navigator.serviceWorker.register('/sw.js?v=10', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('/sw.js?v=11', { updateViaCache: 'none' })
         .then(reg => { reg.update(); })
         .catch(err => console.log('SW reg failed:', err));
     }
