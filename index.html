@@ -5166,21 +5166,8 @@ function AdminNotifications() {
       total += chunk.length;
     }
 
-    // KRITICNO: pozovi send-push za SVAKOG atletu da push stigne na telefon
-    let pushSentCount = 0;
-    for (const athId of targetIds) {
-      try {
-        const { data: pd } = await supa.functions.invoke('send-push', {
-          body: {
-            athlete_id: athId,
-            title, body, icon,
-            action_url: actionUrl || '/#/dashboard',
-            priority
-          }
-        });
-        if (pd?.sent > 0) pushSentCount += pd.sent;
-      } catch(e) { console.warn('push fail for', athId, e); }
-    }
+    // DB trigger automatski salje push za svaki notification INSERT iznad.
+    // NE zovemo invoke ovde da ne pravimo duplikat.
 
     // Sačuvaj kao campaign
     await supa.from('notification_campaigns').insert({
@@ -5191,7 +5178,7 @@ function AdminNotifications() {
     });
 
     setSending(false);
-    setLastResult({ count: total, pushed: pushSentCount });
+    setLastResult({ count: total });
     setTitle(''); setBody(''); setActionUrl('');
     loadCampaigns();
   }
@@ -5339,41 +5326,9 @@ async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
     }).select().single();
     if (error) { console.error('Notif insert greška:', error); return; }
 
-    // Pozovi send-push edge funkciju da poslje push na telefon (kad PWA zatvorena)
-    // BULLETPROOF: pokušaj 2 nacina ako jedan ne radi.
-    // (DB trigger je SLOJ 1 i radi nezavisno — ovo je dodatna sigurnost iz klijenta)
-    const pushPayload = {
-      athlete_id: athleteId, title, body, icon,
-      action_url: actionUrl || '/#/dashboard', priority
-    };
-    let pushOK = false;
-    // Pokušaj 1: supa.functions.invoke (sa user JWT)
-    try {
-      const { data: r1, error: e1 } = await supa.functions.invoke('send-push', { body: pushPayload });
-      if (!e1 && r1?.ok) { pushOK = true; console.log('[VAMIT] push OK via invoke', r1); }
-      else console.warn('[VAMIT] invoke not ok:', e1 || r1);
-    } catch(pushErr) { console.warn('[VAMIT] invoke threw:', pushErr); }
-
-    // Pokušaj 2: direktan fetch (uzima current session token)
-    if (!pushOK) {
-      try {
-        const { data: s } = await supa.auth.getSession();
-        const token = s?.session?.access_token;
-        if (token) {
-          const res = await fetch('https://bauuhowpbrqqmojqnqbr.supabase.co/functions/v1/send-push', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + token,
-              'apikey': token
-            },
-            body: JSON.stringify(pushPayload)
-          });
-          console.log('[VAMIT] push via direct fetch:', res.status);
-        }
-      } catch(fetchErr) { console.warn('[VAMIT] direct fetch fail:', fetchErr); }
-    }
-    // SLOJ 1 (DB trigger) i dalje radi nezavisno — push uvek prolazi.
+    // DB trigger (portal-PUSH-BULLETPROOF-SQL) automatski salje push pri INSERT.
+    // NE pozivamo invoke odavde jer bi pravilo duplikate.
+    console.log('[VAMIT] notif inserted, DB trigger handles push:', key);
   } catch(e) { console.error('sendTemplated err:', e); }
 }
 
