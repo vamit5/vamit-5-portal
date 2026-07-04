@@ -1485,6 +1485,40 @@ function Dashboard({ athlete, profile }) {
 }
 
 // === ACHIEVEMENT ENGINE ===
+// Helper — insert earnings SAMO ako ne postoji za taj (athlete, source='reel', ref_id=reelId)
+// Sprecava duplirano dodavanje ako admin klikne odobri vise puta.
+async function insertReelEarningsOnce(athleteId, reelId, reward) {
+  try {
+    const { data: existing } = await supa.from('earnings_ledger')
+      .select('id')
+      .eq('athlete_id', athleteId)
+      .eq('source', 'reel')
+      .eq('ref_id', reelId)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      console.log('[VAMIT] earnings already exist for reel', reelId, '— skip');
+      return { skipped: true };
+    }
+    const { error: eErr } = await supa.from('earnings_ledger').insert({
+      athlete_id: athleteId, source: 'reel', amount_cents: reward, status: 'available',
+      ref_table: 'reels', ref_id: reelId, description: 'Reel reward',
+      available_at: new Date().toISOString()
+    });
+    if (eErr) { console.error('earnings insert fail:', eErr); return { error: eErr }; }
+    // BODOVI +10 samo jedan put (unique po description + ref)
+    const { data: existXp } = await supa.from('xp_ledger')
+      .select('id').eq('athlete_id', athleteId).eq('source','reel')
+      .eq('description', 'Reel #' + reelId + ' +10 BODOVA').limit(1);
+    if (!existXp || existXp.length === 0) {
+      await supa.from('xp_ledger').insert({
+        athlete_id: athleteId, amount: 10, source: 'reel',
+        description: 'Reel #' + reelId + ' +10 BODOVA'
+      });
+    }
+    return { inserted: true };
+  } catch(e) { console.error('insertReelEarningsOnce err:', e); return { error: e }; }
+}
+
 // Helper koji povlaci sve potrebne podatke i pokrece engine — koristi bilo gde
 async function triggerEngine(athleteId) {
   if (!athleteId) return [];
@@ -3260,20 +3294,12 @@ function AdminReelsQueue() {
     const reel = reels.find(r=>r.id===id);
     await supa.from('reels').update({ status, reviewed_at: new Date().toISOString(), reject_reason: reason }).eq('id', id);
     if (status === 'approved') {
-      // Dodaj earnings koristeci athlete-ov nivo
+      // Dodaj earnings koristeci athlete-ov nivo — SAMO JEDAN PUT (dedup po ref_id)
       const { data: athleteRow } = await supa.from('athletes').select('level').eq('id', reel.athlete_id).maybeSingle();
       const levelKey = athleteRow?.level || 'recruit';
       const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', levelKey).maybeSingle();
       const reward = cfg?.reel_reward_cents || 30;
-      await supa.from('earnings_ledger').insert({
-        athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
-        ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
-      });
-      // Dodaj BODOVE (XP) za odobreni reel — 20 bodova
-      await supa.from('xp_ledger').insert({
-        athlete_id: reel.athlete_id, amount: 10, source: 'reel',
-        description: 'Odobren reel +10 BODOVA'
-      });
+      await insertReelEarningsOnce(reel.athlete_id, id, reward);
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
       // Pokreni achievement engine — moze otkljucati reels/streak dostignuca
       await triggerEngine(reel.athlete_id);
@@ -3606,15 +3632,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
     if (status === 'approved' && reel) {
       const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', athlete.level).maybeSingle();
       const reward = cfg?.reel_reward_cents || 30;
-      await supa.from('earnings_ledger').insert({
-        athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
-        ref_table: 'reels', ref_id: id, description: 'Reel reward', available_at: new Date().toISOString()
-      });
-      // Dodaj +10 BODOVA (mogli su biti zaboravljeni u ovom code path-u)
-      await supa.from('xp_ledger').insert({
-        athlete_id: reel.athlete_id, amount: 10, source: 'reel',
-        description: 'Odobren reel +10 BODOVA'
-      });
+      await insertReelEarningsOnce(reel.athlete_id, id, reward);
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
       await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected' && reel) {
@@ -5129,6 +5147,66 @@ function NotificationsPage({ athlete }) {
 // =====================================================
 // === ADMIN: NOTIFICATION BROADCAST ===
 // =====================================================
+// === TEST DAILY REMINDER — okine reminder rucno (bez cekanja 8h/17h/21h)
+function TestDailyReminderCard() {
+  const [slot, setSlot] = useState('morning');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function fire() {
+    if (busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const url = 'https://bauuhowpbrqqmojqnqbr.supabase.co/functions/v1/daily-reel-reminder?slot=' + slot;
+      const { data: s } = await supa.auth.getSession();
+      const token = s?.session?.access_token || '';
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+          'apikey': token
+        }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg({ type:'ok', text: `✅ ${slot.toUpperCase()} reminder poslat. Notified: ${data.notified||0}, Skipped: ${data.skipped_already_submitted||0}. Push stiže za 5-10s.` });
+      } else {
+        setMsg({ type:'err', text: `Greska ${res.status}: ${JSON.stringify(data)}` });
+      }
+    } catch(e) {
+      setMsg({ type:'err', text: 'Greska: ' + (e.message || e) });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="glass rounded-2xl p-4 border border-gold/30">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-lg">🧪</div>
+        <div className="font-bold text-sm">Test daily reminder (bez čekanja crona)</div>
+      </div>
+      <div className="text-[11px] text-white/60 mb-3">
+        Rucno okini reminder za trenutak. Vidi da li push stize. Vecernji (21h) slot preskace atlete koji su vec postavili reel danas.
+      </div>
+      <div className="flex gap-2 flex-wrap mb-3">
+        {[['morning','☀️ Jutro (8h)'], ['afternoon','🌤️ Popodne (17h)'], ['evening','🌙 Vece (21h)']].map(([k, l]) => (
+          <button key={k} onClick={()=>setSlot(k)}
+            className={"px-3 py-2 rounded-lg text-xs font-bold " + (slot===k ? 'bg-gold text-bg0' : 'bg-white/5 text-white/70')}>{l}</button>
+        ))}
+      </div>
+      <button onClick={fire} disabled={busy}
+        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-gold to-brand3 text-bg0 font-extrabold text-sm disabled:opacity-50">
+        {busy ? 'Šaljem...' : '🚀 Okini ' + slot + ' reminder ODMAH'}
+      </button>
+      {msg && (
+        <div className={"mt-3 text-xs px-3 py-2 rounded-lg " + (msg.type==='ok' ? 'bg-lime/10 border border-lime/30 text-lime' : 'bg-danger/10 border border-danger/30 text-danger')}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminNotifications() {
   const [audience, setAudience] = useState('all'); // all | level | specific
   const [level, setLevel] = useState('recruit');
@@ -5225,6 +5303,9 @@ function AdminNotifications() {
       <div className="glass rounded-2xl p-4 text-xs text-white/70 border border-brand/20">
         🔔 Pošalji notifikaciju atletama. Stiže im real-time u portal + browser notification (ako su dozvolili).
       </div>
+
+      {/* TEST DAILY REMINDER */}
+      <TestDailyReminderCard/>
 
       {/* COMPOSE */}
       <div className="glass-strong rounded-2xl p-5 space-y-4">
@@ -6206,21 +6287,9 @@ function AdminReelsQueueLarge() {
         const { data: cfg } = await supa.from('level_configs').select('reel_reward_cents').eq('level_key', lvl).maybeSingle();
         const reward = cfg?.reel_reward_cents || 30;
 
-        // KORAK 3: Insert earnings (ovo je glavni korak!)
-        const { error: earnErr } = await supa.from('earnings_ledger').insert({
-          athlete_id: reel.athlete_id, source: 'reel', amount_cents: reward, status: 'available',
-          ref_table: 'reels', ref_id: id, description: 'Reel reward',
-          available_at: new Date().toISOString()
-        });
-        if (earnErr) throw new Error('Earnings insert fail: ' + earnErr.message);
-
-        // KORAK 4: BODOVI +10
-        try {
-          await supa.from('xp_ledger').insert({
-            athlete_id: reel.athlete_id, amount: 10, source: 'reel',
-            description: 'Odobren reel +10 BODOVA'
-          });
-        } catch(e) { console.warn('xp insert failed:', e); }
+        // KORAK 3: Insert earnings + bodovi (SAMO JEDAN PUT — dedup po ref_id)
+        const r3 = await insertReelEarningsOnce(reel.athlete_id, id, reward);
+        if (r3.error) throw new Error('Earnings insert fail: ' + (r3.error.message || r3.error));
 
         // KORAK 5: Posalji notifikaciju (ne baci ako fali — vec smo upisali earnings)
         try {
