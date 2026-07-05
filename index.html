@@ -873,11 +873,12 @@ function MyReferralsCard({ athleteId }) {
       let body = { athlete_id: athleteId };
       if (period) {
         const y = period.year, m = period.month;
-        const firstDay = new Date(y, m, 1);
-        const lastDay = new Date(y, m + 1, 0);
-        const iso = (d) => d.toISOString().slice(0, 10);
-        body.from = iso(firstDay);
-        body.to = iso(lastDay);
+        const pad = (n) => String(n).padStart(2, '0');
+        // Poslednji dan meseca (day=0 sledeceg meseca = poslednji ovog)
+        const lastDayNum = new Date(y, m + 1, 0).getDate();
+        // Lokalno formatiranje da ne pomerimo datum kroz UTC
+        body.from = `${y}-${pad(m + 1)}-01`;
+        body.to = `${y}-${pad(m + 1)}-${pad(lastDayNum)}`;
       }
       const { data: d, error } = await supa.functions.invoke('fetch-my-referrals', { body });
       if (error) throw error;
