@@ -967,14 +967,21 @@ function MyReferralsCard({ athleteId }) {
         <div className="p-3 rounded-xl bg-bg0/40 border border-white/10 text-center">
           <div className="text-[10px] uppercase text-white/50 font-bold">{t('portal_referrals_visitors_label','Klikova')}</div>
           <div className="font-display font-black text-2xl text-brand2">{data.visitors || 0}</div>
+          {period && <div className="text-[9px] text-white/40 mt-0.5 leading-tight">{t('portal_referrals_visitors_note_lifetime','uk. svih vremena')}</div>}
         </div>
         <div className="p-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
-          <div className="text-[10px] uppercase text-gold font-bold">{t('portal_referrals_leads_label','Test 7d')}</div>
+          <div className="text-[10px] uppercase text-gold font-bold">{t('portal_referrals_leads_label','Test')}</div>
           <div className="font-display font-black text-2xl text-gold">{period ? (data.leads || 0) : (data.leads_active || 0)}</div>
+          {!period && (data.leads_lifetime || data.leads) > (data.leads_active || 0) && (
+            <div className="text-[9px] text-white/40 mt-0.5 leading-tight">{(data.leads_lifetime || data.leads || 0)} {t('portal_referrals_total_ever','ukupno do sada')}</div>
+          )}
         </div>
         <div className="p-3 rounded-xl bg-lime/10 border border-lime/40 text-center">
           <div className="text-[10px] uppercase text-lime font-bold">{t('portal_referrals_conversions_label','Kupili')}</div>
           <div className="font-display font-black text-2xl text-lime">{period ? (data.conversions || 0) : (data.conversions_active || 0)}</div>
+          {!period && (data.conversions_lifetime || data.conversions) > (data.conversions_active || 0) && (
+            <div className="text-[9px] text-white/40 mt-0.5 leading-tight">{(data.conversions_lifetime || data.conversions || 0)} {t('portal_referrals_total_ever','ukupno do sada')}</div>
+          )}
         </div>
       </div>
 
@@ -6344,6 +6351,8 @@ const LANDING_SECTIONS = [
     { key:'portal_referrals_conversions_label', label:'Label: Kupili', placeholder:'Kupili' },
     { key:'portal_referrals_period_label', label:'Period filter label', placeholder:'Period:' },
     { key:'portal_referrals_all_time', label:'Filter opcija: Sve vreme', placeholder:'Sve vreme' },
+    { key:'portal_referrals_visitors_note_lifetime', label:'Napomena ispod Klikova (kad je filter): uk. svih vremena', placeholder:'uk. svih vremena' },
+    { key:'portal_referrals_total_ever', label:'Sub-label: ukupno do sada (ispod Test i Kupili)', placeholder:'ukupno do sada' },
     { key:'portal_referrals_details_btn', label:'Dugme: Ko je na testu', placeholder:'Ko je trenutno na probnom periodu' },
     { key:'portal_referrals_buyers_btn', label:'Dugme: Ko je kupio', placeholder:'Ko je kupio' },
     { key:'portal_referrals_hide_btn', label:'Dugme: Sakrij liste', placeholder:'Sakrij' },
