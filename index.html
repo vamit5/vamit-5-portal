@@ -863,26 +863,12 @@ function MyReferralsCard({ athleteId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [openList, setOpenList] = useState(null); // 'trial' | 'buyers' | null
-  // Period filter: null = sve vreme, ili {year, month(0-11)}
-  const [period, setPeriod] = useState(null);
-  const [showDebug, setShowDebug] = useState(false);
 
-  useEffect(() => { if (athleteId) load(); }, [athleteId, period]);
-  async function load(opts = {}) {
+  useEffect(() => { if (athleteId) load(); }, [athleteId]);
+  async function load() {
     setLoading(true); setErr(null);
     try {
-      let body = { athlete_id: athleteId };
-      if (period) {
-        const y = period.year, m = period.month;
-        const pad = (n) => String(n).padStart(2, '0');
-        // Poslednji dan meseca (day=0 sledeceg meseca = poslednji ovog)
-        const lastDayNum = new Date(y, m + 1, 0).getDate();
-        // Lokalno formatiranje da ne pomerimo datum kroz UTC
-        body.from = `${y}-${pad(m + 1)}-01`;
-        body.to = `${y}-${pad(m + 1)}-${pad(lastDayNum)}`;
-      }
-      if (opts.forceRefresh) body.force_refresh = true;
-      const { data: d, error } = await supa.functions.invoke('fetch-my-referrals', { body });
+      const { data: d, error } = await supa.functions.invoke('fetch-my-referrals', { body: { athlete_id: athleteId } });
       if (error) throw error;
       if (d?.error) throw new Error(d.error);
       setData(d);
@@ -891,18 +877,6 @@ function MyReferralsCard({ athleteId }) {
       setErr(e.message || String(e));
     } finally { setLoading(false); }
   }
-
-  // Generisi listu meseci: poslednjih 24 (2 godine unazad)
-  const monthOptions = [];
-  {
-    const now = new Date();
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      monthOptions.push({ year: d.getFullYear(), month: d.getMonth() });
-    }
-  }
-  const monthNames = ['Januar','Februar','Mart','April','Maj','Jun','Jul','Avgust','Septembar','Oktobar','Novembar','Decembar'];
-  const periodLabel = period ? `${monthNames[period.month]} ${period.year}` : t('portal_referrals_all_time','Sve vreme');
 
   if (loading) {
     return (
@@ -937,7 +911,7 @@ function MyReferralsCard({ athleteId }) {
   return (
     <div className="glass-strong rounded-2xl p-5 sm:p-6 border border-brand2/30"
       style={{background: 'linear-gradient(135deg, rgba(0,240,255,0.05), rgba(168,85,247,0.05))'}}>
-      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold">{t('portal_referrals_title','🎯 Moje reference')}</div>
           <div className="text-xs text-white/50">{t('portal_referrals_subtitle','Ljudi koji su ušli preko tvog linka')}</div>
@@ -945,83 +919,27 @@ function MyReferralsCard({ athleteId }) {
         <button onClick={load} className="px-2.5 py-1 rounded-lg bg-white/5 text-[10px] text-white/60 hover:bg-white/10">🔄</button>
       </div>
 
-      {/* PERIOD FILTER */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold shrink-0">📅 {t('portal_referrals_period_label','Period:')}</div>
-        <select
-          value={period ? `${period.year}-${period.month}` : ''}
-          onChange={e => {
-            const v = e.target.value;
-            if (!v) { setPeriod(null); return; }
-            const [y, m] = v.split('-').map(Number);
-            setPeriod({ year: y, month: m });
-          }}
-          className="flex-1 px-3 py-1.5 rounded-lg bg-bg1 border border-white/15 text-xs font-bold outline-none focus:border-brand2"
-        >
-          <option value="">{t('portal_referrals_all_time','Sve vreme')}</option>
-          {monthOptions.map((o, i) => (
-            <option key={i} value={`${o.year}-${o.month}`}>{monthNames[o.month]} {o.year}</option>
-          ))}
-        </select>
-      </div>
-
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="p-3 rounded-xl bg-bg0/40 border border-white/10 text-center">
           <div className="text-[10px] uppercase text-white/50 font-bold">{t('portal_referrals_visitors_label','Klikova')}</div>
           <div className="font-display font-black text-2xl text-brand2">{data.visitors || 0}</div>
-          {period && <div className="text-[9px] text-white/40 mt-0.5 leading-tight">{t('portal_referrals_visitors_note_lifetime','uk. svih vremena')}</div>}
+          <div className="text-[9px] text-white/40 mt-0.5">{t('portal_referrals_total_label','ukupno')}</div>
         </div>
         <div className="p-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
           <div className="text-[10px] uppercase text-gold font-bold">{t('portal_referrals_leads_label','Test')}</div>
-          <div className="font-display font-black text-2xl text-gold">{period ? (data.leads || 0) : (data.leads_active || 0)}</div>
-          {!period && (data.leads_lifetime || data.leads) > (data.leads_active || 0) && (
+          <div className="font-display font-black text-2xl text-gold">{data.leads_active || 0}</div>
+          {(data.leads_lifetime || data.leads || 0) > (data.leads_active || 0) && (
             <div className="text-[9px] text-white/40 mt-0.5 leading-tight">{(data.leads_lifetime || data.leads || 0)} {t('portal_referrals_total_ever','ukupno do sada')}</div>
           )}
         </div>
         <div className="p-3 rounded-xl bg-lime/10 border border-lime/40 text-center">
           <div className="text-[10px] uppercase text-lime font-bold">{t('portal_referrals_conversions_label','Kupili')}</div>
-          <div className="font-display font-black text-2xl text-lime">{period ? (data.conversions || 0) : (data.conversions_active || 0)}</div>
-          {!period && (data.conversions_lifetime || data.conversions) > (data.conversions_active || 0) && (
+          <div className="font-display font-black text-2xl text-lime">{data.conversions_active || 0}</div>
+          {(data.conversions_lifetime || data.conversions || 0) > (data.conversions_active || 0) && (
             <div className="text-[9px] text-white/40 mt-0.5 leading-tight">{(data.conversions_lifetime || data.conversions || 0)} {t('portal_referrals_total_ever','ukupno do sada')}</div>
           )}
         </div>
       </div>
-
-      {/* SYNC / DEBUG dugmad */}
-      <div className="flex items-center justify-end gap-2 mb-3 text-[10px]">
-        <button
-          onClick={() => load({ forceRefresh: true })}
-          className="px-2 py-1 rounded-md bg-brand2/15 text-brand2 border border-brand2/30 font-bold hover:bg-brand2/25"
-          title="Ponovo poveži sa Rewardful po email-u"
-        >🔄 Osveži Rewardful vezu</button>
-        <button
-          onClick={() => setShowDebug(v => !v)}
-          className="px-2 py-1 rounded-md bg-white/5 text-white/60 border border-white/10 hover:bg-white/10"
-        >🔍 {showDebug ? 'Sakrij' : 'Debug'}</button>
-      </div>
-
-      {showDebug && data._debug && (
-        <div className="mb-4 p-3 rounded-lg bg-bg0/70 border border-white/10 overflow-auto max-h-72">
-          <div className="text-[10px] font-bold text-brand2 mb-2">🔍 Debug info (šta Rewardful zapravo vraća):</div>
-          <div className="text-[10px] text-white/70 space-y-1 font-mono">
-            <div><span className="text-white/40">affiliate_id:</span> {data._debug.affiliate_id}</div>
-            <div><span className="text-white/40">source:</span> {data._debug.affiliate_source}</div>
-            <div><span className="text-white/40">email_searched:</span> {data._debug.email_searched || '—'}</div>
-            <div><span className="text-white/40">fetch_strategy:</span> {data._debug.fetch_strategy}</div>
-            <div><span className="text-white/40">raw aff.visitors:</span> {String(data._debug.raw_aff_visitors)}</div>
-            <div><span className="text-white/40">raw aff.leads:</span> {String(data._debug.raw_aff_leads)}</div>
-            <div><span className="text-white/40">raw aff.conversions:</span> {String(data._debug.raw_aff_conversions)}</div>
-            <div><span className="text-white/40">stats:</span> {JSON.stringify(data._debug.raw_stats)}</div>
-            <div><span className="text-white/40">campaign_stats:</span> {JSON.stringify(data._debug.raw_campaign_stats)}</div>
-            <div><span className="text-white/40">aff keys:</span> {(data._debug.aff_all_keys || []).join(', ')}</div>
-            <div><span className="text-white/40">enriched_count:</span> {data._debug.enriched_count}</div>
-            <div><span className="text-white/40">filtered_count:</span> {data._debug.filtered_count}</div>
-            <div><span className="text-white/40">state_breakdown:</span> {JSON.stringify(data._debug.state_breakdown)}</div>
-            <div><span className="text-white/40">sample referrals:</span></div>
-            <pre className="text-[9px] whitespace-pre-wrap break-all bg-black/40 p-2 rounded">{JSON.stringify(data._debug.sample_dates, null, 2)}</pre>
-          </div>
-        </div>
-      )}
 
       {/* DVE LISTE: Probni period + Kupili — svaka clickable sa svojim statusima */}
       {(() => {
@@ -6387,9 +6305,7 @@ const LANDING_SECTIONS = [
     { key:'portal_referrals_visitors_label', label:'Label: Klikova', placeholder:'Klikova' },
     { key:'portal_referrals_leads_label', label:'Label: Test 7d (leads)', placeholder:'Test 7d' },
     { key:'portal_referrals_conversions_label', label:'Label: Kupili', placeholder:'Kupili' },
-    { key:'portal_referrals_period_label', label:'Period filter label', placeholder:'Period:' },
-    { key:'portal_referrals_all_time', label:'Filter opcija: Sve vreme', placeholder:'Sve vreme' },
-    { key:'portal_referrals_visitors_note_lifetime', label:'Napomena ispod Klikova (kad je filter): uk. svih vremena', placeholder:'uk. svih vremena' },
+    { key:'portal_referrals_total_label', label:'Sub-label: ukupno (ispod Klikovi)', placeholder:'ukupno' },
     { key:'portal_referrals_total_ever', label:'Sub-label: ukupno do sada (ispod Test i Kupili)', placeholder:'ukupno do sada' },
     { key:'portal_referrals_details_btn', label:'Dugme: Ko je na testu', placeholder:'Ko je trenutno na probnom periodu' },
     { key:'portal_referrals_buyers_btn', label:'Dugme: Ko je kupio', placeholder:'Ko je kupio' },
