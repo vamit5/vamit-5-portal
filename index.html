@@ -862,7 +862,7 @@ function MyReferralsCard({ athleteId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const [showDetails, setShowDetails] = useState(false);
+  const [openList, setOpenList] = useState(null); // 'trial' | 'buyers' | null
 
   useEffect(() => { if (athleteId) load(); }, [athleteId]);
   async function load() {
@@ -936,40 +936,100 @@ function MyReferralsCard({ athleteId }) {
         </div>
       </div>
 
-      {/* SAMO probni period (lead ili trial) — ne prikazujemo one koji su vec kupili */}
+      {/* DVE LISTE: Probni period + Kupili — svaka clickable sa svojim statusima */}
       {(() => {
-        const trialsOnly = (data.referrals || []).filter(r => r.state === 'lead' || r.state === 'trial');
-        if (trialsOnly.length === 0) return null;
-        return (
-          <>
-            <button onClick={()=>setShowDetails(!showDetails)}
-              className="w-full py-2.5 rounded-xl bg-gold/15 border border-gold/40 text-gold text-xs font-bold hover:bg-gold/25 flex items-center justify-center gap-2">
-              {showDetails
-                ? <>▲ {t('portal_referrals_hide_btn','Sakrij ko je na testu')}</>
-                : <>⏳ {t('portal_referrals_details_btn','Ko je trenutno na probnom periodu')} · <span className="text-gold font-black">{trialsOnly.length}</span></>}
-            </button>
+        const allRefs = data.referrals || [];
+        const trials = allRefs.filter(r => r.state === 'lead');
+        const buyers = allRefs.filter(r => r.state === 'conversion');
 
-            {showDetails && (
-              <div className="mt-3 space-y-2">
-                <div className="text-[10px] uppercase tracking-wider text-gold font-bold text-center py-1">
-                  ⏳ {t('portal_referrals_only_trial_note','Samo korisnici na 7-dnevnom probnom periodu')}
-                </div>
-                {trialsOnly.map(r => (
-                  <div key={r.id} className="p-3 rounded-lg bg-gold/5 border border-gold/30 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold truncate">{r.customer_name || r.customer_email || t('portal_referrals_no_name','Bez imena')}</div>
-                      <div className="text-[10px] text-white/40">
-                        {t('portal_referrals_trial_started','Test počeo')}: {formatDate(r.became_lead_at || r.became_conversion_at)}
-                      </div>
+        return (
+          <div className="space-y-2">
+            {/* PROBNI PERIOD */}
+            {trials.length > 0 && (
+              <>
+                <button onClick={()=>setOpenList(openList === 'trial' ? null : 'trial')}
+                  className="w-full py-2.5 rounded-xl bg-gold/15 border border-gold/40 text-gold text-xs font-bold hover:bg-gold/25 flex items-center justify-center gap-2">
+                  {openList === 'trial'
+                    ? <>▲ {t('portal_referrals_hide_btn','Sakrij')}</>
+                    : <>⏳ {t('portal_referrals_details_btn','Ko je trenutno na probnom periodu')} · <span className="text-gold font-black">{trials.length}</span></>}
+                </button>
+                {openList === 'trial' && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-[10px] uppercase tracking-wider text-gold font-bold text-center py-1">
+                      ⏳ {t('portal_referrals_only_trial_note','Korisnici u 7-dnevnom probnom periodu')}
                     </div>
-                    <span className="shrink-0 px-2.5 py-1 rounded bg-gold/20 border border-gold/50 text-[10px] font-black text-gold">
-                      {t('portal_referrals_status_trial','⏳ TEST')}{r.trial_days_left !== null && r.trial_days_left !== undefined ? ' · ' + r.trial_days_left + 'd' : ''}
-                    </span>
+                    {trials.map(r => {
+                      const canceled = !r.active;
+                      return (
+                        <div key={r.id} className={"p-3 rounded-lg flex items-center justify-between gap-3 border " + (canceled ? 'bg-danger/5 border-danger/30' : 'bg-gold/5 border-gold/30')}>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold truncate">{r.customer_name || r.customer_email || t('portal_referrals_no_name','Bez imena')}</div>
+                            <div className="text-[10px] text-white/40">
+                              {canceled
+                                ? <>{t('portal_referrals_canceled_label','Otkazao test')}: {formatDate(r.canceled_at || r.became_lead_at)}</>
+                                : <>{t('portal_referrals_trial_started','Test počeo')}: {formatDate(r.became_lead_at)}</>}
+                            </div>
+                          </div>
+                          {canceled ? (
+                            <span className="shrink-0 px-2.5 py-1 rounded bg-danger/20 border border-danger/50 text-[10px] font-black text-danger">
+                              ✕ {t('portal_referrals_status_canceled','OTKAZAO')}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 px-2.5 py-1 rounded bg-gold/20 border border-gold/50 text-[10px] font-black text-gold">
+                              {t('portal_referrals_status_trial','⏳ TEST')}{r.trial_days_left !== null && r.trial_days_left !== undefined ? ' · ' + r.trial_days_left + 'd' : ''}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
-          </>
+
+            {/* KUPILI */}
+            {buyers.length > 0 && (
+              <>
+                <button onClick={()=>setOpenList(openList === 'buyers' ? null : 'buyers')}
+                  className="w-full py-2.5 rounded-xl bg-lime/15 border border-lime/40 text-lime text-xs font-bold hover:bg-lime/25 flex items-center justify-center gap-2">
+                  {openList === 'buyers'
+                    ? <>▲ {t('portal_referrals_hide_btn','Sakrij')}</>
+                    : <>✓ {t('portal_referrals_buyers_btn','Ko je kupio')} · <span className="text-lime font-black">{buyers.length}</span></>}
+                </button>
+                {openList === 'buyers' && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-[10px] uppercase tracking-wider text-lime font-bold text-center py-1">
+                      ✓ {t('portal_referrals_buyers_note','Korisnici koji su prešli iz testa u plaćeni nalog')}
+                    </div>
+                    {buyers.map(r => {
+                      const canceled = !r.active;
+                      return (
+                        <div key={r.id} className={"p-3 rounded-lg flex items-center justify-between gap-3 border " + (canceled ? 'bg-danger/5 border-danger/30' : 'bg-lime/5 border-lime/30')}>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold truncate">{r.customer_name || r.customer_email || t('portal_referrals_no_name','Bez imena')}</div>
+                            <div className="text-[10px] text-white/40">
+                              {canceled
+                                ? <>{t('portal_referrals_buyer_canceled_label','Otkazao pretplatu')}: {formatDate(r.canceled_at || r.became_conversion_at)}</>
+                                : <>{t('portal_referrals_buyer_paid_label','Kupio')}: {formatDate(r.became_conversion_at)}</>}
+                            </div>
+                          </div>
+                          {canceled ? (
+                            <span className="shrink-0 px-2.5 py-1 rounded bg-danger/20 border border-danger/50 text-[10px] font-black text-danger">
+                              ✕ {t('portal_referrals_status_canceled_sub','OTKAZAO')}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 px-2.5 py-1 rounded bg-lime/20 border border-lime/50 text-[10px] font-black text-lime">
+                              {t('portal_referrals_status_active','✓ AKTIVAN')}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         );
       })()}
     </div>
@@ -6240,10 +6300,18 @@ const LANDING_SECTIONS = [
     { key:'portal_referrals_visitors_label', label:'Label: Klikova', placeholder:'Klikova' },
     { key:'portal_referrals_leads_label', label:'Label: Test 7d (leads)', placeholder:'Test 7d' },
     { key:'portal_referrals_conversions_label', label:'Label: Kupili', placeholder:'Kupili' },
-    { key:'portal_referrals_details_btn', label:'Dugme: Vidi ko je na testu', placeholder:'Ko je trenutno na probnom periodu' },
-    { key:'portal_referrals_hide_btn', label:'Dugme: Sakrij ko je na testu', placeholder:'Sakrij ko je na testu' },
-    { key:'portal_referrals_only_trial_note', label:'Napomena iznad liste', placeholder:'Samo korisnici na 7-dnevnom probnom periodu' },
+    { key:'portal_referrals_details_btn', label:'Dugme: Ko je na testu', placeholder:'Ko je trenutno na probnom periodu' },
+    { key:'portal_referrals_buyers_btn', label:'Dugme: Ko je kupio', placeholder:'Ko je kupio' },
+    { key:'portal_referrals_hide_btn', label:'Dugme: Sakrij liste', placeholder:'Sakrij' },
+    { key:'portal_referrals_only_trial_note', label:'Napomena iznad test liste', placeholder:'Korisnici u 7-dnevnom probnom periodu' },
+    { key:'portal_referrals_buyers_note', label:'Napomena iznad kupci liste', placeholder:'Korisnici koji su prešli iz testa u plaćeni nalog' },
     { key:'portal_referrals_trial_started', label:'Label: Test počeo', placeholder:'Test počeo' },
+    { key:'portal_referrals_canceled_label', label:'Label: Otkazao test', placeholder:'Otkazao test' },
+    { key:'portal_referrals_buyer_paid_label', label:'Label: Kupio', placeholder:'Kupio' },
+    { key:'portal_referrals_buyer_canceled_label', label:'Label: Otkazao pretplatu', placeholder:'Otkazao pretplatu' },
+    { key:'portal_referrals_status_canceled', label:'Badge: Otkazao test', placeholder:'OTKAZAO' },
+    { key:'portal_referrals_status_canceled_sub', label:'Badge: Otkazao pretplatu', placeholder:'OTKAZAO' },
+    { key:'portal_referrals_status_active', label:'Badge: Aktivan kupac', placeholder:'✓ AKTIVAN' },
     { key:'portal_referrals_loading', label:'Loading tekst', placeholder:'Učitavam reference...' },
     { key:'portal_referrals_not_connected_title', label:'Nema Rewardful — naslov', placeholder:'Reference nisu povezane' },
     { key:'portal_referrals_not_connected_body', label:'Nema Rewardful — telo', placeholder:'Registruj se na Rewardful sa istim email-om — automatski se povezuje.', textarea:true },
