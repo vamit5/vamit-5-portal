@@ -865,9 +865,10 @@ function MyReferralsCard({ athleteId }) {
   const [openList, setOpenList] = useState(null); // 'trial' | 'buyers' | null
   // Period filter: null = sve vreme, ili {year, month(0-11)}
   const [period, setPeriod] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => { if (athleteId) load(); }, [athleteId, period]);
-  async function load() {
+  async function load(opts = {}) {
     setLoading(true); setErr(null);
     try {
       let body = { athlete_id: athleteId };
@@ -880,6 +881,7 @@ function MyReferralsCard({ athleteId }) {
         body.from = `${y}-${pad(m + 1)}-01`;
         body.to = `${y}-${pad(m + 1)}-${pad(lastDayNum)}`;
       }
+      if (opts.forceRefresh) body.force_refresh = true;
       const { data: d, error } = await supa.functions.invoke('fetch-my-referrals', { body });
       if (error) throw error;
       if (d?.error) throw new Error(d.error);
@@ -984,6 +986,42 @@ function MyReferralsCard({ athleteId }) {
           )}
         </div>
       </div>
+
+      {/* SYNC / DEBUG dugmad */}
+      <div className="flex items-center justify-end gap-2 mb-3 text-[10px]">
+        <button
+          onClick={() => load({ forceRefresh: true })}
+          className="px-2 py-1 rounded-md bg-brand2/15 text-brand2 border border-brand2/30 font-bold hover:bg-brand2/25"
+          title="Ponovo poveži sa Rewardful po email-u"
+        >🔄 Osveži Rewardful vezu</button>
+        <button
+          onClick={() => setShowDebug(v => !v)}
+          className="px-2 py-1 rounded-md bg-white/5 text-white/60 border border-white/10 hover:bg-white/10"
+        >🔍 {showDebug ? 'Sakrij' : 'Debug'}</button>
+      </div>
+
+      {showDebug && data._debug && (
+        <div className="mb-4 p-3 rounded-lg bg-bg0/70 border border-white/10 overflow-auto max-h-72">
+          <div className="text-[10px] font-bold text-brand2 mb-2">🔍 Debug info (šta Rewardful zapravo vraća):</div>
+          <div className="text-[10px] text-white/70 space-y-1 font-mono">
+            <div><span className="text-white/40">affiliate_id:</span> {data._debug.affiliate_id}</div>
+            <div><span className="text-white/40">source:</span> {data._debug.affiliate_source}</div>
+            <div><span className="text-white/40">email_searched:</span> {data._debug.email_searched || '—'}</div>
+            <div><span className="text-white/40">fetch_strategy:</span> {data._debug.fetch_strategy}</div>
+            <div><span className="text-white/40">raw aff.visitors:</span> {String(data._debug.raw_aff_visitors)}</div>
+            <div><span className="text-white/40">raw aff.leads:</span> {String(data._debug.raw_aff_leads)}</div>
+            <div><span className="text-white/40">raw aff.conversions:</span> {String(data._debug.raw_aff_conversions)}</div>
+            <div><span className="text-white/40">stats:</span> {JSON.stringify(data._debug.raw_stats)}</div>
+            <div><span className="text-white/40">campaign_stats:</span> {JSON.stringify(data._debug.raw_campaign_stats)}</div>
+            <div><span className="text-white/40">aff keys:</span> {(data._debug.aff_all_keys || []).join(', ')}</div>
+            <div><span className="text-white/40">enriched_count:</span> {data._debug.enriched_count}</div>
+            <div><span className="text-white/40">filtered_count:</span> {data._debug.filtered_count}</div>
+            <div><span className="text-white/40">state_breakdown:</span> {JSON.stringify(data._debug.state_breakdown)}</div>
+            <div><span className="text-white/40">sample referrals:</span></div>
+            <pre className="text-[9px] whitespace-pre-wrap break-all bg-black/40 p-2 rounded">{JSON.stringify(data._debug.sample_dates, null, 2)}</pre>
+          </div>
+        </div>
+      )}
 
       {/* DVE LISTE: Probni period + Kupili — svaka clickable sa svojim statusima */}
       {(() => {
