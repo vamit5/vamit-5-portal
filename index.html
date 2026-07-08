@@ -208,19 +208,48 @@ function useAuth() {
   }
 
   useEffect(() => {
+    // === BULLETPROOF SESSION INIT za PWA cold start (iOS + Android) ===
+    // Bez ovoga: getSession() ponekad hangje na mobile PWA cold start-u jer je
+    // IndexedDB jos "hladan" → setLoading(false) nikad ne fajruje → blank ekran.
+    // Fix: timeout + .catch() garantuju da loading prestane u svakom slucaju.
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; setLoading(false); } };
+
+    // Safety timeout — ako nista ne odgovori za 3 sekunde, oslobodi UI
+    const timeoutId = setTimeout(() => {
+      if (!finished) {
+        console.warn('[useAuth] getSession timeout — proceeding without cached session');
+        finish();
+      }
+    }, 3000);
+
     supa.auth.getSession().then(async ({ data }) => {
-      const u = data.session?.user || null;
-      setUser(u);
-      if (u) await refreshProfile(u.id);
-      setLoading(false);
+      try {
+        const u = data.session?.user || null;
+        setUser(u);
+        if (u) await refreshProfile(u.id);
+      } catch (e) {
+        console.error('[useAuth] session init err:', e);
+      }
+      finish();
+    }).catch(err => {
+      console.error('[useAuth] getSession fail:', err);
+      finish();
     });
+
     const { data: sub } = supa.auth.onAuthStateChange(async (_, session) => {
       const u = session?.user || null;
       setUser(u);
       if (u) await refreshProfile(u.id);
       else { setProfile(null); setAthlete(null); }
+      // Redundant safety — ako je getSession() hangovao a auth state stigne, oslobodi UI
+      finish();
     });
-    return () => sub.subscription.unsubscribe();
+
+    return () => {
+      clearTimeout(timeoutId);
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   return { user, profile, athlete, loading, refreshProfile };
