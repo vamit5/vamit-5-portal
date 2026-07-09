@@ -6923,25 +6923,25 @@ function ReelIdeasPage() {
   if (loading) return <div className="glass rounded-2xl p-8 text-center text-white/60">Učitavam…</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">💡 Ideje za Reelse</h1>
-        <p className="text-sm text-white/60">Primeri video-a, hookova i captiona koje možeš odmah da koristiš.</p>
+        <p className="text-sm text-white/60">Primeri video-a, hookova i captiona za tvoje reelse.</p>
       </div>
 
-      {/* VIDEO PRIMERI */}
+      {/* VIDEO PRIMERI — 2 kolone kompaktno, playable inline */}
       {videos.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="font-display text-lg font-bold">🎬 Video primeri</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <h2 className="font-display text-base font-bold text-white/80">🎬 Video primeri</h2>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             {videos.map(v => (
-              <div key={v.id} className="glass-strong rounded-2xl overflow-hidden border border-white/10">
-                <div className="aspect-[9/16] bg-black">
+              <div key={v.id} className="glass-strong rounded-xl overflow-hidden border border-white/10">
+                <div className="aspect-[3/4] bg-black relative">
                   <iframe src={toEmbedUrl(v.video_url)} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen frameBorder="0"/>
                 </div>
-                <div className="p-3">
-                  <div className="text-sm font-bold text-white truncate">{v.title || 'Reel primer'}</div>
-                  <a href={v.video_url} target="_blank" rel="noopener" className="text-[10px] text-brand2 hover:underline truncate block">Otvori u Instagramu ↗</a>
+                <div className="p-2">
+                  <div className="text-[11px] font-bold text-white truncate leading-tight">{v.title || 'Reel primer'}</div>
+                  <a href={v.video_url} target="_blank" rel="noopener" className="text-[9px] text-brand2 hover:underline truncate block">Otvori u IG ↗</a>
                 </div>
               </div>
             ))}
@@ -6949,53 +6949,71 @@ function ReelIdeasPage() {
         </div>
       )}
 
-      {/* MISSION HOOKS */}
+      {/* MISSION HOOKS — collapsible */}
       {missions.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="font-display text-lg font-bold">🎣 Ideje za danas (Hook + Formula)</h2>
-          <div className="space-y-3">
+        <details className="glass-strong rounded-2xl border border-gold/25 overflow-hidden group">
+          <summary className="cursor-pointer p-4 flex items-center justify-between hover:bg-white/5 select-none list-none">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">🎣</div>
+              <div>
+                <div className="font-display text-base font-bold text-white">Ideje za danas</div>
+                <div className="text-[11px] text-white/50">{missions.length} hookova + formula · klikni za pregled</div>
+              </div>
+            </div>
+            <div className="text-gold text-lg transition-transform group-open:rotate-180">▾</div>
+          </summary>
+          <div className="px-4 pb-4 pt-1 space-y-2.5 border-t border-white/5">
             {missions.map((m, i) => (
-              <div key={m.id} className="glass-strong rounded-2xl p-4 border border-gold/20 hover:border-gold/40 transition">
+              <div key={m.id} className="rounded-xl p-3 bg-bg0/40 border border-gold/15 hover:border-gold/30 transition">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-gold font-bold">{m.title || 'MISSION'}</div>
                   <button onClick={()=>copyToClipboard(`${m.title}\n🎣 Hook\n"${m.hook}"\nFormula: ${m.formula}`, 'm'+i)}
                     className="text-[10px] px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-white/60 shrink-0">
-                    {copiedIdx === 'm'+i ? '✓ Kopirano' : '📋 Kopiraj'}
+                    {copiedIdx === 'm'+i ? '✓ Kopirano' : '📋'}
                   </button>
                 </div>
-                <div className="mb-2">
-                  <div className="text-[10px] text-white/40 mb-0.5">🎣 Hook</div>
-                  <div className="text-base font-bold text-white">"{m.hook}"</div>
+                <div className="mb-1.5">
+                  <div className="text-[9px] text-white/40 mb-0.5">🎣 HOOK</div>
+                  <div className="text-sm font-bold text-white leading-snug">"{m.hook}"</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-white/40 mb-0.5">Formula</div>
-                  <div className="text-sm text-white/80">{m.formula}</div>
+                  <div className="text-[9px] text-white/40 mb-0.5">FORMULA</div>
+                  <div className="text-xs text-white/75 leading-snug">{m.formula}</div>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </details>
       )}
 
-      {/* CAPTIONS */}
+      {/* CAPTIONS — collapsible */}
       {captions.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="font-display text-lg font-bold">✍️ Ideje za caption-e</h2>
-          <div className="grid gap-3">
+        <details className="glass-strong rounded-2xl border border-brand2/25 overflow-hidden group">
+          <summary className="cursor-pointer p-4 flex items-center justify-between hover:bg-white/5 select-none list-none">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">✍️</div>
+              <div>
+                <div className="font-display text-base font-bold text-white">Ideje za caption</div>
+                <div className="text-[11px] text-white/50">{captions.length} caption ideja · klikni za pregled</div>
+              </div>
+            </div>
+            <div className="text-brand2 text-lg transition-transform group-open:rotate-180">▾</div>
+          </summary>
+          <div className="px-4 pb-4 pt-1 space-y-2.5 border-t border-white/5">
             {captions.map((c, i) => (
-              <div key={c.id} className="glass-strong rounded-2xl p-4 border border-brand2/20 hover:border-brand2/40 transition">
-                <div className="flex items-start justify-between gap-3 mb-2">
+              <div key={c.id} className="rounded-xl p-3 bg-bg0/40 border border-brand2/15 hover:border-brand2/30 transition">
+                <div className="flex items-start justify-between gap-3 mb-1.5">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-brand2 font-bold">{c.title || `Caption #${i+1}`}</div>
                   <button onClick={()=>copyToClipboard(c.content, 'c'+i)}
                     className="text-[10px] px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-white/60 shrink-0">
-                    {copiedIdx === 'c'+i ? '✓ Kopirano' : '📋 Kopiraj'}
+                    {copiedIdx === 'c'+i ? '✓ Kopirano' : '📋'}
                   </button>
                 </div>
-                <div className="text-sm text-white/85 whitespace-pre-wrap leading-relaxed">{c.content}</div>
+                <div className="text-xs text-white/85 whitespace-pre-wrap leading-relaxed">{c.content}</div>
               </div>
             ))}
           </div>
-        </div>
+        </details>
       )}
 
       {videos.length === 0 && missions.length === 0 && captions.length === 0 && (
