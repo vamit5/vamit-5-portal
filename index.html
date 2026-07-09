@@ -1943,7 +1943,8 @@ function ReelsPage({ athlete, profile }) {
   async function submit(e) {
     e.preventDefault();
     setSubmitting(true); setMsg(null);
-    const { error } = await supa.from('reels').insert({ athlete_id: athlete.id, url, caption: caption||null });
+    const nowIso = new Date().toISOString();
+    const { error } = await supa.from('reels').insert({ athlete_id: athlete.id, url, caption: caption||null, status: 'pending', submitted_at: nowIso });
     setSubmitting(false);
     if (error) setMsg({type:'err', text: error.message});
     else {
