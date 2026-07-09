@@ -972,6 +972,7 @@ function MyReferralsCard({ athleteId }) {
           <summary className="cursor-pointer text-white/60 select-none">🐛 Debug info (klik za detalje)</summary>
           <div className="mt-2 space-y-1 text-white/70">
             <div><span className="text-white/40">Rewardful aff.leads:</span> <b className="text-gold">{String(data._debug.raw_aff_leads)}</b> · aff.conversions: <b className="text-lime">{String(data._debug.raw_aff_conversions)}</b> · aff.visitors: <b className="text-brand2">{String(data._debug.raw_aff_visitors)}</b></div>
+            <div><span className="text-white/40">Last 7 days:</span> leads=<b className="text-gold">{String(data._debug.last_7d_leads)}</b> · conversions=<b className="text-lime">{String(data._debug.last_7d_conversions)}</b> · raw: <code className="text-[9px]">{JSON.stringify(data._debug.last_7d_raw)}</code></div>
             <div><span className="text-white/40">Enriched u listi:</span> {data._debug.enriched_count} referrala · filter: {data._debug.fetch_strategy}</div>
             <div><span className="text-white/40">State breakdown:</span> {JSON.stringify(data._debug.state_breakdown)}</div>
             <div><span className="text-white/40">Sample datumi (svaki referral sa state + became_lead_at):</span></div>
