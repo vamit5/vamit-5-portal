@@ -768,6 +768,7 @@ function PortalShell({ profile, athlete, route, children, onLogout }) {
   ] : [
     { hash:'#/dashboard',  label:'Dashboard',  emoji:'🏠' },
     { hash:'#/reels',      label:'Reels',      emoji:'🎬' },
+    { hash:'#/ideje',      label:'Ideje za Reelse', emoji:'💡' },
     { hash:'#/kurs',       label:'Kurs',       emoji:'📚' },
     { hash:'#/dostignuca', label:'Dostignuća', emoji:'🏆' },
     { hash:'#/rang',       label:'Rang Lista', emoji:'📊' },
@@ -3472,6 +3473,7 @@ function AdminPage() {
           {k:'levels',        label:'🎖️ Nivoi'},
           {k:'achievements',  label:'🏆 Dostignuća'},
           {k:'course',        label:'📚 Kurs CMS'},
+          {k:'ideas',         label:'💡 Ideje za Reelse'},
         ].map(t => (
           <button key={t.k} onClick={()=>setTab(t.k)}
             className={"px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap " + (tab===t.k ? 'bg-gold text-bg0' : 'glass text-white/70')}>
@@ -3494,6 +3496,7 @@ function AdminPage() {
       {tab==='levels' && <AdminLevels/>}
       {tab==='achievements' && <AdminAchievements/>}
       {tab==='course' && <AdminCourse/>}
+      {tab==='ideas' && <AdminReelIdeas/>}
     </div>
   );
 }
@@ -6865,6 +6868,7 @@ function App() {
     if (route === '/admin' && isSuper) return <AdminPage/>;
 
     if (route === '/kurs') return <KursPage athlete={athlete}/>;
+    if (route === '/ideje') return <ReelIdeasPage/>;
     if (route === '/dostignuca') return <AchievementsPage athlete={athlete}/>;
     if (route === '/rang') return <LeaderboardPage athlete={athlete}/>;
     if (route === '/notifikacije') return <NotificationsPage athlete={athlete}/>;
@@ -6876,6 +6880,325 @@ function App() {
     <PortalShell profile={profile} athlete={athlete} route={route} onLogout={logout}>
       {renderPage()}
     </PortalShell>
+  );
+}
+
+// =====================================================
+// === IDEJE ZA REELSE — atletska stranica (READ-ONLY) ===
+// =====================================================
+function ReelIdeasPage() {
+  const [videos, setVideos] = useState([]);
+  const [missions, setMissions] = useState([]);
+  const [captions, setCaptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [copiedIdx, setCopiedIdx] = useState(null);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    const { data } = await supa.from('reel_ideas').select('*').eq('active', true).order('sort_order', { ascending: true });
+    const list = data || [];
+    setVideos(list.filter(x => x.kind === 'video'));
+    setMissions(list.filter(x => x.kind === 'mission'));
+    setCaptions(list.filter(x => x.kind === 'caption'));
+    setLoading(false);
+  }
+
+  async function copyToClipboard(text, idx) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 1500);
+    } catch(e) { alert('Kopiranje ne radi u ovom pregledaču.'); }
+  }
+
+  // Instagram reel URL → embed
+  function toEmbedUrl(url) {
+    if (!url) return null;
+    const m = url.match(/instagram\.com\/reel\/([^\/\?]+)/i);
+    if (m) return `https://www.instagram.com/reel/${m[1]}/embed/`;
+    return url;
+  }
+
+  if (loading) return <div className="glass rounded-2xl p-8 text-center text-white/60">Učitavam…</div>;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">💡 Ideje za Reelse</h1>
+        <p className="text-sm text-white/60">Primeri video-a, hookova i captiona koje možeš odmah da koristiš.</p>
+      </div>
+
+      {/* VIDEO PRIMERI */}
+      {videos.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="font-display text-lg font-bold">🎬 Video primeri</h2>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {videos.map(v => (
+              <div key={v.id} className="glass-strong rounded-2xl overflow-hidden border border-white/10">
+                <div className="aspect-[9/16] bg-black">
+                  <iframe src={toEmbedUrl(v.video_url)} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen frameBorder="0"/>
+                </div>
+                <div className="p-3">
+                  <div className="text-sm font-bold text-white truncate">{v.title || 'Reel primer'}</div>
+                  <a href={v.video_url} target="_blank" rel="noopener" className="text-[10px] text-brand2 hover:underline truncate block">Otvori u Instagramu ↗</a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* MISSION HOOKS */}
+      {missions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="font-display text-lg font-bold">🎣 Ideje za danas (Hook + Formula)</h2>
+          <div className="space-y-3">
+            {missions.map((m, i) => (
+              <div key={m.id} className="glass-strong rounded-2xl p-4 border border-gold/20 hover:border-gold/40 transition">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-gold font-bold">{m.title || 'MISSION'}</div>
+                  <button onClick={()=>copyToClipboard(`${m.title}\n🎣 Hook\n"${m.hook}"\nFormula: ${m.formula}`, 'm'+i)}
+                    className="text-[10px] px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-white/60 shrink-0">
+                    {copiedIdx === 'm'+i ? '✓ Kopirano' : '📋 Kopiraj'}
+                  </button>
+                </div>
+                <div className="mb-2">
+                  <div className="text-[10px] text-white/40 mb-0.5">🎣 Hook</div>
+                  <div className="text-base font-bold text-white">"{m.hook}"</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-white/40 mb-0.5">Formula</div>
+                  <div className="text-sm text-white/80">{m.formula}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CAPTIONS */}
+      {captions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="font-display text-lg font-bold">✍️ Ideje za caption-e</h2>
+          <div className="grid gap-3">
+            {captions.map((c, i) => (
+              <div key={c.id} className="glass-strong rounded-2xl p-4 border border-brand2/20 hover:border-brand2/40 transition">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-brand2 font-bold">{c.title || `Caption #${i+1}`}</div>
+                  <button onClick={()=>copyToClipboard(c.content, 'c'+i)}
+                    className="text-[10px] px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-white/60 shrink-0">
+                    {copiedIdx === 'c'+i ? '✓ Kopirano' : '📋 Kopiraj'}
+                  </button>
+                </div>
+                <div className="text-sm text-white/85 whitespace-pre-wrap leading-relaxed">{c.content}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {videos.length === 0 && missions.length === 0 && captions.length === 0 && (
+        <div className="glass rounded-2xl p-8 text-center text-white/60">
+          Još nema sadržaja. Admin će uskoro dodati ideje.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================================================
+// === ADMIN: IDEJE ZA REELSE — CRUD (za super_admin) ===
+// =====================================================
+function AdminReelIdeas() {
+  const [tab, setTab] = useState('video'); // video | mission | caption
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null ili obj sa poljima
+
+  useEffect(() => { load(); }, [tab]);
+  async function load() {
+    setLoading(true);
+    const { data } = await supa.from('reel_ideas').select('*').eq('kind', tab).order('sort_order', { ascending: true });
+    setItems(data || []);
+    setLoading(false);
+  }
+
+  function newItem() {
+    setEditing({
+      kind: tab,
+      sort_order: (items[items.length - 1]?.sort_order || 0) + 10,
+      title: '',
+      video_url: '',
+      hook: '',
+      formula: '',
+      content: '',
+      active: true
+    });
+  }
+  function edit(item) {
+    setEditing({ ...item });
+  }
+  async function save() {
+    if (!editing) return;
+    const payload = {
+      kind: editing.kind,
+      sort_order: Number(editing.sort_order) || 0,
+      title: editing.title || null,
+      video_url: editing.video_url || null,
+      hook: editing.hook || null,
+      formula: editing.formula || null,
+      content: editing.content || null,
+      active: editing.active !== false,
+      updated_at: new Date().toISOString()
+    };
+    let error;
+    if (editing.id) {
+      ({ error } = await supa.from('reel_ideas').update(payload).eq('id', editing.id));
+    } else {
+      ({ error } = await supa.from('reel_ideas').insert(payload));
+    }
+    if (error) { alert('Greška: ' + error.message); return; }
+    setEditing(null);
+    load();
+  }
+  async function del(id) {
+    if (!confirm('Obrisati ovaj primer?')) return;
+    const { error } = await supa.from('reel_ideas').delete().eq('id', id);
+    if (error) { alert('Greška: ' + error.message); return; }
+    load();
+  }
+  async function toggleActive(item) {
+    await supa.from('reel_ideas').update({ active: !item.active, updated_at: new Date().toISOString() }).eq('id', item.id);
+    load();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h2 className="font-display text-xl font-bold">💡 Ideje za Reelse</h2>
+          <p className="text-xs text-white/60">Dodaj/uredi/obriši sadržaj koji atlete vide.</p>
+        </div>
+        <button onClick={newItem} className="px-4 py-2 rounded-lg bg-gold text-bg0 font-bold text-sm">+ Dodaj primer</button>
+      </div>
+
+      <div className="flex gap-2">
+        {[
+          {k:'video', label:'🎬 Video'},
+          {k:'mission', label:'🎣 Hook + Formula'},
+          {k:'caption', label:'✍️ Caption'}
+        ].map(t => (
+          <button key={t.k} onClick={()=>setTab(t.k)}
+            className={"px-3 py-1.5 rounded-lg text-xs font-bold " + (tab===t.k ? 'bg-brand text-bg0' : 'glass text-white/70')}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="glass rounded-2xl p-8 text-center text-white/60">Učitavam...</div>
+      ) : items.length === 0 ? (
+        <div className="glass rounded-2xl p-8 text-center text-white/60">Nema unosa za ovaj tip. Klikni "+ Dodaj primer".</div>
+      ) : (
+        <div className="space-y-2">
+          {items.map(item => (
+            <div key={item.id} className={"glass rounded-xl p-3 border " + (item.active ? 'border-white/10' : 'border-danger/30 opacity-60')}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] text-white/40 font-mono">#{item.sort_order}</span>
+                    <span className="text-sm font-bold truncate">{item.title || '(bez naslova)'}</span>
+                    {!item.active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-danger/20 text-danger">skriven</span>}
+                  </div>
+                  {tab === 'video' && item.video_url && <div className="text-[11px] text-brand2 truncate">{item.video_url}</div>}
+                  {tab === 'mission' && (
+                    <>
+                      <div className="text-[11px] text-white/60 truncate">🎣 "{item.hook}"</div>
+                      <div className="text-[11px] text-white/50 truncate">→ {item.formula}</div>
+                    </>
+                  )}
+                  {tab === 'caption' && <div className="text-[11px] text-white/60 line-clamp-2 whitespace-pre-wrap">{item.content}</div>}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={()=>toggleActive(item)} className="text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10">{item.active ? '👁️ Sakrij' : '👁️ Prikaži'}</button>
+                  <button onClick={()=>edit(item)} className="text-[10px] px-2 py-1 rounded bg-brand2/20 text-brand2 hover:bg-brand2/30">✏️ Edit</button>
+                  <button onClick={()=>del(item.id)} className="text-[10px] px-2 py-1 rounded bg-danger/20 text-danger hover:bg-danger/30">🗑️</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* MODAL — edit/new */}
+      {editing && (
+        <div className="fixed inset-0 z-50 bg-bg0/80 backdrop-blur-xl flex items-start sm:items-center justify-center p-4 overflow-y-auto"
+             onClick={()=>setEditing(null)}>
+          <div className="glass-strong rounded-2xl p-5 max-w-lg w-full my-8 space-y-3" onClick={e=>e.stopPropagation()}>
+            <div className="text-lg font-bold">{editing.id ? '✏️ Uredi' : '+ Novi'} — {editing.kind === 'video' ? 'Video' : editing.kind === 'mission' ? 'Hook + Formula' : 'Caption'}</div>
+
+            <div>
+              <label className="text-[10px] text-white/60 uppercase tracking-wider">Naslov {editing.kind === 'mission' && '(npr. MISSION #001)'}</label>
+              <input value={editing.title || ''} onChange={e=>setEditing({...editing, title:e.target.value})}
+                className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2"/>
+            </div>
+
+            {editing.kind === 'video' && (
+              <div>
+                <label className="text-[10px] text-white/60 uppercase tracking-wider">Instagram Reel URL</label>
+                <input value={editing.video_url || ''} onChange={e=>setEditing({...editing, video_url:e.target.value})}
+                  placeholder="https://www.instagram.com/reel/..."
+                  className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2"/>
+              </div>
+            )}
+
+            {editing.kind === 'mission' && (
+              <>
+                <div>
+                  <label className="text-[10px] text-white/60 uppercase tracking-wider">🎣 Hook (rečenica u navodnicima)</label>
+                  <input value={editing.hook || ''} onChange={e=>setEditing({...editing, hook:e.target.value})}
+                    placeholder='npr. Niko nije znao kroz šta prolazim.'
+                    className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2"/>
+                </div>
+                <div>
+                  <label className="text-[10px] text-white/60 uppercase tracking-wider">Formula (koraci sa strelicama)</label>
+                  <input value={editing.formula || ''} onChange={e=>setEditing({...editing, formula:e.target.value})}
+                    placeholder="Borba → Kako sam se osećao → Šta mi je pomoglo → CTA"
+                    className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2"/>
+                </div>
+              </>
+            )}
+
+            {editing.kind === 'caption' && (
+              <div>
+                <label className="text-[10px] text-white/60 uppercase tracking-wider">Sadržaj captiona (podržava više redova)</label>
+                <textarea value={editing.content || ''} onChange={e=>setEditing({...editing, content:e.target.value})}
+                  rows={8}
+                  className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2 font-mono"/>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="text-[10px] text-white/60 uppercase tracking-wider">Redosled (manji broj = viši)</label>
+                <input type="number" value={editing.sort_order} onChange={e=>setEditing({...editing, sort_order:e.target.value})}
+                  className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2"/>
+              </div>
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={editing.active !== false} onChange={e=>setEditing({...editing, active:e.target.checked})}/>
+                Aktivan (vidljiv atletama)
+              </label>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={()=>setEditing(null)} className="flex-1 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm">Otkaži</button>
+              <button onClick={save} className="flex-1 py-2.5 rounded-lg bg-gold text-bg0 font-bold text-sm">💾 Sačuvaj</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
