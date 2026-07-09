@@ -6912,12 +6912,42 @@ function ReelIdeasPage() {
     } catch(e) { alert('Kopiranje ne radi u ovom pregledaču.'); }
   }
 
-  // Instagram reel URL → embed
-  function toEmbedUrl(url) {
-    if (!url) return null;
-    const m = url.match(/instagram\.com\/reel\/([^\/\?]+)/i);
-    if (m) return `https://www.instagram.com/reel/${m[1]}/embed/`;
-    return url;
+  // Detektuje tip video-a i render-uje odgovarajući plejer koji radi INLINE u portalu
+  function renderVideo(url) {
+    if (!url) return <div className="w-full h-full flex items-center justify-center text-white/30 text-xs">Nema video-a</div>;
+    const lower = url.toLowerCase();
+
+    // 1) DIREKTAN VIDEO FAJL (MP4/WEBM/MOV) — HTML5 video, radi ODMAH bez odlaska
+    if (lower.match(/\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/)) {
+      return <video src={url} controls playsInline preload="metadata" className="w-full h-full object-cover bg-black"/>;
+    }
+
+    // 2) YOUTUBE — iframe embed (radi inline)
+    const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (ytMatch) {
+      return <iframe src={`https://www.youtube.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`} className="w-full h-full" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen frameBorder="0"/>;
+    }
+
+    // 3) VIMEO — iframe embed (radi inline)
+    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeoMatch) {
+      return <iframe src={`https://player.vimeo.com/video/${vimeoMatch[1]}?title=0&byline=0&portrait=0`} className="w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen frameBorder="0"/>;
+    }
+
+    // 4) INSTAGRAM — NEMA pouzdanog inline play, samo preview + link. Fallback poruka.
+    const igMatch = url.match(/instagram\.com\/(?:reel|p)\/([^\/\?]+)/i);
+    if (igMatch) {
+      return (
+        <div className="w-full h-full bg-black flex flex-col items-center justify-center gap-2 p-3">
+          <div className="text-4xl">📱</div>
+          <div className="text-[10px] text-white/60 text-center">Instagram embed ne radi inline.</div>
+          <a href={url} target="_blank" rel="noopener" className="text-[10px] px-3 py-1.5 rounded-md bg-brand2/20 text-brand2 border border-brand2/40">Otvori u IG ↗</a>
+        </div>
+      );
+    }
+
+    // 5) NEPOZNAT — probaj iframe
+    return <iframe src={url} className="w-full h-full bg-black" allow="autoplay" allowFullScreen frameBorder="0"/>;
   }
 
   if (loading) return <div className="glass rounded-2xl p-8 text-center text-white/60">Učitavam…</div>;
@@ -6937,11 +6967,10 @@ function ReelIdeasPage() {
             {videos.map(v => (
               <div key={v.id} className="glass-strong rounded-xl overflow-hidden border border-white/10">
                 <div className="aspect-[3/4] bg-black relative">
-                  <iframe src={toEmbedUrl(v.video_url)} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen frameBorder="0"/>
+                  {renderVideo(v.video_url)}
                 </div>
                 <div className="p-2">
                   <div className="text-[11px] font-bold text-white truncate leading-tight">{v.title || 'Reel primer'}</div>
-                  <a href={v.video_url} target="_blank" rel="noopener" className="text-[9px] text-brand2 hover:underline truncate block">Otvori u IG ↗</a>
                 </div>
               </div>
             ))}
@@ -7163,11 +7192,47 @@ function AdminReelIdeas() {
             </div>
 
             {editing.kind === 'video' && (
-              <div>
-                <label className="text-[10px] text-white/60 uppercase tracking-wider">Instagram Reel URL</label>
+              <div className="space-y-2">
+                <label className="text-[10px] text-white/60 uppercase tracking-wider">Video (MP4 upload / YouTube / Vimeo URL)</label>
                 <input value={editing.video_url || ''} onChange={e=>setEditing({...editing, video_url:e.target.value})}
-                  placeholder="https://www.instagram.com/reel/..."
+                  placeholder="https://... (MP4 direktan, YouTube ili Vimeo se pušta inline)"
                   className="w-full px-3 py-2 rounded-lg bg-bg0 border border-white/15 text-sm outline-none focus:border-brand2"/>
+                <div className="flex items-center gap-2">
+                  <input type="file" accept="video/mp4,video/webm,video/quicktime" id="video-upload-input"
+                    style={{display:'none'}}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 50 * 1024 * 1024) { alert('Maksimum 50MB. Kompresuj video ili koristi YouTube link.'); return; }
+                      const ext = file.name.split('.').pop() || 'mp4';
+                      const path = `reel-ideas/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+                      setEditing(prev => ({...prev, _uploading:true}));
+                      const { error: upErr } = await supa.storage.from('public-assets').upload(path, file, { cacheControl:'31536000', upsert:false });
+                      if (upErr) { alert('Upload greška: ' + upErr.message); setEditing(prev => ({...prev, _uploading:false})); return; }
+                      const { data: urlData } = supa.storage.from('public-assets').getPublicUrl(path);
+                      setEditing(prev => ({...prev, video_url: urlData.publicUrl, _uploading:false}));
+                    }}/>
+                  <button onClick={()=>document.getElementById('video-upload-input').click()}
+                    disabled={editing._uploading}
+                    className="text-xs px-3 py-1.5 rounded-md bg-brand2/20 text-brand2 border border-brand2/40 hover:bg-brand2/30 disabled:opacity-50">
+                    {editing._uploading ? '⏳ Uploadujem...' : '📤 Upload MP4 fajl'}
+                  </button>
+                  <div className="text-[10px] text-white/40">Max 50MB. Instagram embed ne radi inline.</div>
+                </div>
+                {editing.video_url && (
+                  <div className="mt-2 aspect-[3/4] max-w-[200px] rounded-lg overflow-hidden bg-black border border-white/10">
+                    {(() => {
+                      const url = editing.video_url;
+                      const lower = url.toLowerCase();
+                      if (lower.match(/\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/)) return <video src={url} controls playsInline className="w-full h-full object-cover"/>;
+                      const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                      if (yt) return <iframe src={`https://www.youtube.com/embed/${yt[1]}`} className="w-full h-full" frameBorder="0" allowFullScreen/>;
+                      const vm = url.match(/vimeo\.com\/(\d+)/);
+                      if (vm) return <iframe src={`https://player.vimeo.com/video/${vm[1]}`} className="w-full h-full" frameBorder="0" allowFullScreen/>;
+                      return <div className="w-full h-full flex items-center justify-center text-[10px] text-white/40 p-2 text-center">Preview nedostupan</div>;
+                    })()}
+                  </div>
+                )}
               </div>
             )}
 
