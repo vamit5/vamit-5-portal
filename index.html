@@ -5528,15 +5528,8 @@ function AdminNotifications() {
       total += chunk.length;
     }
 
-    // DODATNO: DIREKTAN poziv send-push za svakog atletu — DB trigger je ne-pouzdan,
-    // ovo garantuje da push STIGNE na telefon.
-    for (const id of targetIds) {
-      try {
-        await supa.functions.invoke('send-push', {
-          body: { athlete_id: id, title, body, icon, action_url: actionUrl || '/#/dashboard', priority }
-        });
-      } catch(e) { console.warn('direct push fail for', id, e); }
-    }
+    // DB trigger automatski salje push za svaki notifikacije INSERT iznad.
+    // NE zovemo invoke ovde da ne pravimo duplikat.
 
     // Sačuvaj kao campaign
     await supa.from('notification_campaigns').insert({
@@ -5698,13 +5691,8 @@ async function sendTemplated(athleteId, key, vars = {}, actionUrl = null) {
     }).select().single();
     if (error) { console.error('Notif insert greška:', error); return; }
 
-    // DIREKTAN poziv send-push (DB trigger je nepouzdan). Ovo garantuje push na telefon.
-    try {
-      await supa.functions.invoke('send-push', {
-        body: { athlete_id: athleteId, title, body, icon, action_url: actionUrl || '/#/dashboard', priority }
-      });
-    } catch(e) { console.warn('[VAMIT] direct push fail:', e); }
-    console.log('[VAMIT] notif inserted + direct push sent:', key);
+    // DB trigger automatski salje push. NE zovemo invoke da ne pravimo duplikat.
+    console.log('[VAMIT] notif inserted, DB trigger salje push:', key);
   } catch(e) { console.error('sendTemplated err:', e); }
 }
 
