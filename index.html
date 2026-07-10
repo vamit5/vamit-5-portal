@@ -893,12 +893,11 @@ function MyReferralsCard({ athleteId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [openList, setOpenList] = useState(null); // 'trial' | 'buyers' | null
+  const [pushTest, setPushTest] = useState(null); // rezultat test push dugmeta
 
   useEffect(() => { if (athleteId) load(); }, [athleteId]);
 
-  // REALTIME — kada webhook upise novi lead/otkazivanje u rewardful_leads tabelu,
-  // kartica se odmah osvezi bez potrebe za manuelnim refresh-om.
-  // Time novi test (+1) i otkazivanje (-1) atleta vidi INSTANT.
+  // REALTIME — realtime subscription za instant update kad se rewardful_leads promeni
   useEffect(() => {
     if (!athleteId) return;
     const ch = supa.channel('rewleads_' + athleteId)
@@ -906,6 +905,27 @@ function MyReferralsCard({ athleteId }) {
       .subscribe();
     return () => { try { ch.unsubscribe(); } catch(e){} };
   }, [athleteId]);
+
+  // AUTO-POLL svakih 30 sekundi dok je stranica otvorena — self-syncing sa Rewardful-om
+  useEffect(() => {
+    if (!athleteId) return;
+    const interval = setInterval(() => { load(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [athleteId]);
+
+  async function testPush() {
+    setPushTest({ loading: true });
+    try {
+      const { data: d, error } = await supa.functions.invoke('fetch-my-referrals', {
+        body: { athlete_id: athleteId, test_push: true }
+      });
+      if (error) throw error;
+      setPushTest(d);
+    } catch(e) {
+      setPushTest({ error: e.message || String(e) });
+    }
+  }
+
   async function load() {
     setLoading(true); setErr(null);
     try {
@@ -978,7 +998,43 @@ function MyReferralsCard({ athleteId }) {
         </div>
       </div>
 
-
+      {/* DIJAGNOSTIKA: Test push + info o push subscription-u */}
+      <div className="mb-3 p-3 rounded-lg bg-bg0/50 border border-white/10 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-[10px] text-white/60">
+            🔔 Push status: <b className={data._push?.subscriptions_count > 0 ? 'text-lime' : 'text-danger'}>
+              {data._push?.subscriptions_count > 0
+                ? `${data._push.subscriptions_count} aktivan subscription`
+                : 'NEMA subscription-a — uključi push u profilu'}
+            </b>
+          </div>
+          <button onClick={testPush} disabled={pushTest?.loading}
+            className="px-3 py-1.5 rounded-md bg-gold/20 text-gold border border-gold/40 text-[11px] font-bold hover:bg-gold/30 disabled:opacity-50">
+            {pushTest?.loading ? '⏳...' : '🧪 Test push'}
+          </button>
+        </div>
+        {pushTest && !pushTest.loading && (
+          <div className="text-[10px] p-2 rounded bg-black/30 border border-white/5">
+            {pushTest.error ? (
+              <div className="text-danger">❌ Greška: {pushTest.error}</div>
+            ) : (
+              <div className="space-y-1">
+                <div className={pushTest.push_subscriptions_count > 0 ? 'text-lime font-bold' : 'text-danger font-bold'}>
+                  {pushTest.message}
+                </div>
+                <div className="text-white/50">Subscription-a: {pushTest.push_subscriptions_count}</div>
+                {pushTest.notif_insert_error && <div className="text-danger">Notif insert err: {pushTest.notif_insert_error}</div>}
+                <div className="text-white/40">Direct send-push: {JSON.stringify(pushTest.direct_push_result)}</div>
+              </div>
+            )}
+          </div>
+        )}
+        {data._sync && (data._sync.new_leads_inserted > 0 || data._sync.canceled_marked > 0) && (
+          <div className="text-[10px] text-brand2">
+            🔄 Sync: +{data._sync.new_leads_inserted} novih, -{data._sync.canceled_marked} otkazanih
+          </div>
+        )}
+      </div>
 
       {/* DVE LISTE: Probni period + Kupili — svaka clickable sa svojim statusima */}
       {(() => {
