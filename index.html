@@ -1004,8 +1004,8 @@ function MyReferralsCard({ athleteId }) {
           <div className="text-[10px] text-white/60">
             🔔 Push status: <b className={data._push?.subscriptions_count > 0 ? 'text-lime' : 'text-danger'}>
               {data._push?.subscriptions_count > 0
-                ? `${data._push.subscriptions_count} aktivan subscription`
-                : 'NEMA subscription-a — uključi push u profilu'}
+                ? `${data._push.subscriptions_count} uređaj sa push notifikacijama`
+                : 'NEMA registrovanog uređaja — uključi push u profilu'}
             </b>
           </div>
           <button onClick={testPush} disabled={pushTest?.loading}
