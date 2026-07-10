@@ -906,10 +906,10 @@ function MyReferralsCard({ athleteId }) {
     return () => { try { ch.unsubscribe(); } catch(e){} };
   }, [athleteId]);
 
-  // AUTO-POLL svakih 30 sekundi dok je stranica otvorena — self-syncing sa Rewardful-om
+  // AUTO-POLL svakih 15 sekundi dok je stranica otvorena — self-syncing sa Rewardful-om
   useEffect(() => {
     if (!athleteId) return;
-    const interval = setInterval(() => { load(); }, 30_000);
+    const interval = setInterval(() => { load(); }, 15_000);
     return () => clearInterval(interval);
   }, [athleteId]);
 
@@ -989,52 +989,15 @@ function MyReferralsCard({ athleteId }) {
         <div className="p-3 rounded-xl bg-gold/10 border border-gold/40 text-center">
           <div className="text-[10px] uppercase text-gold font-bold">{t('portal_referrals_leads_label','Test')}</div>
           <div className="font-display font-black text-2xl text-gold">{data.leads_active || 0}</div>
-          <div className="text-[9px] text-white/40 mt-0.5">{t('portal_referrals_active_now_sub','trenutno aktivni')}</div>
+          <div className="text-[9px] text-white/40 mt-0.5">{t('portal_referrals_active_now_sub','u poslednjih 7 dana')}</div>
         </div>
         <div className="p-3 rounded-xl bg-lime/10 border border-lime/40 text-center">
           <div className="text-[10px] uppercase text-lime font-bold">{t('portal_referrals_conversions_label','Kupili')}</div>
           <div className="font-display font-black text-2xl text-lime">{data.conversions_active || 0}</div>
-          <div className="text-[9px] text-white/40 mt-0.5">{t('portal_referrals_active_now_sub','trenutno aktivni')}</div>
+          <div className="text-[9px] text-white/40 mt-0.5">{t('portal_referrals_active_now_sub','u poslednjih 7 dana')}</div>
         </div>
       </div>
 
-      {/* DIJAGNOSTIKA: Test push + info o push subscription-u */}
-      <div className="mb-3 p-3 rounded-lg bg-bg0/50 border border-white/10 space-y-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="text-[10px] text-white/60">
-            🔔 Push status: <b className={data._push?.subscriptions_count > 0 ? 'text-lime' : 'text-danger'}>
-              {data._push?.subscriptions_count > 0
-                ? `${data._push.subscriptions_count} uređaj sa push notifikacijama`
-                : 'NEMA registrovanog uređaja — uključi push u profilu'}
-            </b>
-          </div>
-          <button onClick={testPush} disabled={pushTest?.loading}
-            className="px-3 py-1.5 rounded-md bg-gold/20 text-gold border border-gold/40 text-[11px] font-bold hover:bg-gold/30 disabled:opacity-50">
-            {pushTest?.loading ? '⏳...' : '🧪 Test push'}
-          </button>
-        </div>
-        {pushTest && !pushTest.loading && (
-          <div className="text-[10px] p-2 rounded bg-black/30 border border-white/5">
-            {pushTest.error ? (
-              <div className="text-danger">❌ Greška: {pushTest.error}</div>
-            ) : (
-              <div className="space-y-1">
-                <div className={pushTest.push_subscriptions_count > 0 ? 'text-lime font-bold' : 'text-danger font-bold'}>
-                  {pushTest.message}
-                </div>
-                <div className="text-white/50">Subscription-a: {pushTest.push_subscriptions_count}</div>
-                {pushTest.notif_insert_error && <div className="text-danger">Notif insert err: {pushTest.notif_insert_error}</div>}
-                <div className="text-white/40">Direct send-push: {JSON.stringify(pushTest.direct_push_result)}</div>
-              </div>
-            )}
-          </div>
-        )}
-        {data._sync && (data._sync.new_leads_inserted > 0 || data._sync.canceled_marked > 0) && (
-          <div className="text-[10px] text-brand2">
-            🔄 Sync: +{data._sync.new_leads_inserted} novih, -{data._sync.canceled_marked} otkazanih
-          </div>
-        )}
-      </div>
 
       {/* DVE LISTE: Probni period + Kupili — svaka clickable sa svojim statusima */}
       {(() => {
@@ -6984,9 +6947,9 @@ function ReelIdeasPage() {
     if (!url) return <div className="w-full h-full flex items-center justify-center text-white/30 text-xs">Nema video-a</div>;
     const lower = url.toLowerCase();
 
-    // 1) DIREKTAN VIDEO FAJL (MP4/WEBM/MOV) — HTML5 video, radi ODMAH bez odlaska
+    // 1) DIREKTAN VIDEO FAJL (MP4/WEBM/MOV) — HTML5 video, autoplay muted → odmah vidi šta je
     if (lower.match(/\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/)) {
-      return <video src={url} controls playsInline preload="metadata" className="w-full h-full object-cover bg-black"/>;
+      return <video src={url} controls playsInline autoPlay muted loop preload="metadata" className="w-full h-full object-cover bg-black"/>;
     }
 
     // 2) YOUTUBE — iframe embed (radi inline)
@@ -7026,28 +6989,33 @@ function ReelIdeasPage() {
         <p className="text-sm text-white/60">Primeri video-a, hookova i captiona za tvoje reelse.</p>
       </div>
 
-      {/* VIDEO PRIMERI — 2 kolone kompaktno, playable inline */}
+      {/* VIDEO PRIMERI — horizontalni carousel sa snap-scroll (radi ODMAH, ne crn ekran) */}
       {videos.length > 0 && (
         <div className="space-y-2">
-          <h2 className="font-display text-base font-bold text-white/80">🎬 Video primeri</h2>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {videos.map(v => (
-              <div key={v.id} className="glass-strong rounded-xl overflow-hidden border border-white/10">
-                <div className="aspect-[3/4] bg-black relative">
-                  {renderVideo(v.video_url)}
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-base font-bold text-white/80">🎬 Video primeri</h2>
+            <span className="text-[10px] text-white/40">← skroluj →</span>
+          </div>
+          <div className="-mx-4 sm:mx-0 px-4 sm:px-0">
+            <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 scrollbar-hide" style={{scrollBehavior:'smooth'}}>
+              {videos.map(v => (
+                <div key={v.id} className="glass-strong rounded-xl overflow-hidden border border-white/10 shrink-0 snap-start" style={{width:'70%', maxWidth:'260px'}}>
+                  <div className="aspect-[9/16] bg-black relative">
+                    {renderVideo(v.video_url)}
+                  </div>
+                  <div className="p-2">
+                    <div className="text-[11px] font-bold text-white truncate leading-tight">{v.title || 'Reel primer'}</div>
+                  </div>
                 </div>
-                <div className="p-2">
-                  <div className="text-[11px] font-bold text-white truncate leading-tight">{v.title || 'Reel primer'}</div>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* MISSION HOOKS — collapsible */}
+      {/* MISSION HOOKS — collapsible (auto scroll u view kad se otvori) */}
       {missions.length > 0 && (
-        <details className="glass-strong rounded-2xl border border-gold/25 overflow-hidden group">
+        <details className="glass-strong rounded-2xl border border-gold/25 overflow-hidden group scroll-mt-4" onToggle={(e) => { if (e.target.open) setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'start'}), 100); }}>
           <summary className="cursor-pointer p-4 flex items-center justify-between hover:bg-white/5 select-none list-none">
             <div className="flex items-center gap-3">
               <div className="text-2xl">🎣</div>
@@ -7082,9 +7050,9 @@ function ReelIdeasPage() {
         </details>
       )}
 
-      {/* CAPTIONS — collapsible */}
+      {/* CAPTIONS — collapsible (otvara se scrollom u view kad klikneš) */}
       {captions.length > 0 && (
-        <details className="glass-strong rounded-2xl border border-brand2/25 overflow-hidden group">
+        <details className="glass-strong rounded-2xl border border-brand2/25 overflow-hidden group scroll-mt-4" onToggle={(e) => { if (e.target.open) setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'start'}), 100); }}>
           <summary className="cursor-pointer p-4 flex items-center justify-between hover:bg-white/5 select-none list-none">
             <div className="flex items-center gap-3">
               <div className="text-2xl">✍️</div>
