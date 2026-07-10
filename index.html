@@ -895,6 +895,17 @@ function MyReferralsCard({ athleteId }) {
   const [openList, setOpenList] = useState(null); // 'trial' | 'buyers' | null
 
   useEffect(() => { if (athleteId) load(); }, [athleteId]);
+
+  // REALTIME — kada webhook upise novi lead/otkazivanje u rewardful_leads tabelu,
+  // kartica se odmah osvezi bez potrebe za manuelnim refresh-om.
+  // Time novi test (+1) i otkazivanje (-1) atleta vidi INSTANT.
+  useEffect(() => {
+    if (!athleteId) return;
+    const ch = supa.channel('rewleads_' + athleteId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rewardful_leads', filter: 'athlete_id=eq.' + athleteId }, () => load())
+      .subscribe();
+    return () => { try { ch.unsubscribe(); } catch(e){} };
+  }, [athleteId]);
   async function load() {
     setLoading(true); setErr(null);
     try {
