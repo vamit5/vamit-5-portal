@@ -1426,7 +1426,7 @@ function MyTeam({ athlete }) {
 }
 
 function Dashboard({ athlete, profile }) {
-  const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0, bodovi:0 });
+  const [stats, setStats] = useState({ reels_total:0, reels_month:0, reels_pending:0, reels_submitted_total:0, reels_submitted_month:0, reels_rejected:0, sales_total:0, sales_month:0, earnings_pending:0, earnings_available:0, earnings_lifetime:0, streak:0, bodovi:0 });
   const [activity, setActivity] = useState([]);
   const [levelCfg, setLevelCfg] = useState(null);
   const [newAchievement, setNewAchievement] = useState(null);
@@ -1453,10 +1453,16 @@ function Dashboard({ athlete, profile }) {
   async function loadAll() {
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
     // Direktni queries — bez view-a (siguran nacin)
-    const [r1, r2, r3, sa, sm, allEarnings, paidPayouts, lc, reelsDates, xpRows] = await Promise.all([
+    const [r1, r2, r3, r4, r5, r6, sa, sm, allEarnings, paidPayouts, lc, reelsDates, xpRows] = await Promise.all([
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved'),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','approved').gte('submitted_at', monthStart.toISOString()),
       supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','pending'),
+      // NOVO: SVI reels (svi statusi — pending, approved, rejected) za level progression
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id),
+      // NOVO: SVI reels ovaj mesec
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).gte('submitted_at', monthStart.toISOString()),
+      // NOVO: rejected reels
+      supa.from('reels').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','rejected'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed'),
       supa.from('sales').select('id',{count:'exact', head:true}).eq('athlete_id', athlete.id).eq('status','confirmed').gte('created_at', monthStart.toISOString()),
       // Sve earnings rows (svi statusi)
@@ -1494,11 +1500,17 @@ function Dashboard({ athlete, profile }) {
     }
 
     const reelsTotal = r1.count||0;
+    const reelsSubmittedTotal = r4.count||0;
+    const reelsSubmittedMonth = r5.count||0;
+    const reelsRejected = r6.count||0;
     const salesTotal = sa.count||0;
     setStats({
-      reels_total: reelsTotal,
-      reels_month: r2.count||0,
-      reels_pending: r3.count||0,
+      reels_total: reelsTotal,               // approved (za earnings)
+      reels_month: r2.count||0,               // approved ovaj mesec
+      reels_pending: r3.count||0,             // pending review
+      reels_submitted_total: reelsSubmittedTotal, // SVI reels (za level progression)
+      reels_submitted_month: reelsSubmittedMonth, // SVI reels ovaj mesec
+      reels_rejected: reelsRejected,          // rejected
       sales_total: salesTotal,
       sales_month: sm.count||0,
       earnings_pending: totalPending,
@@ -1544,7 +1556,10 @@ function Dashboard({ athlete, profile }) {
     ? Math.floor((Date.now() - new Date(levelStartedAt).getTime()) / 86400000)
     : 0;
   const daysRemaining = Math.max(0, target.days - daysSinceLevelStart);
-  const reelsInPeriod = stats.reels_total;
+  // Za level progression koristimo UKUPAN broj postavljenih reels-ova (svi statusi)
+  // jer atleta mora 60 reels u 60 dana — nebitno da li su svi validni ili ne.
+  // Zarada se i dalje priznaje samo za approved (to je posebna kolona).
+  const reelsInPeriod = stats.reels_submitted_total;
   const reelsTarget = target.reels;
   const reelsRemaining = Math.max(0, reelsTarget - reelsInPeriod);
   const reelsPct = Math.min(100, Math.round((reelsInPeriod / reelsTarget) * 100));
@@ -1690,8 +1705,16 @@ function Dashboard({ athlete, profile }) {
 
       {/* OVERVIEW STATS */}
       <div className="grid grid-cols-3 gap-3">
-        <MiniStat label="Reels (ukupno)" value={stats.reels_total} sub={stats.reels_pending + ' na čekanju'} />
-        <MiniStat label="Reels (mesec)" value={stats.reels_month} sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)} />
+        <MiniStat
+          label="Reels (ukupno)"
+          value={stats.reels_submitted_total}
+          sub={`✓ ${stats.reels_total} odobreno${stats.reels_pending ? ' · ⏳ ' + stats.reels_pending : ''}${stats.reels_rejected ? ' · ✗ ' + stats.reels_rejected : ''}`}
+        />
+        <MiniStat
+          label="Reels (mesec)"
+          value={stats.reels_submitted_month}
+          sub={"od "+(monthlyReq.reels_30d||monthlyReq.reels_per_month||30)}
+        />
         <MiniStat label="Prodaje (ukupno)" value={stats.sales_total} sub={stats.sales_month + ' ovaj mesec'} />
       </div>
 
