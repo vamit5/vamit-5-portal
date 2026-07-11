@@ -7197,31 +7197,7 @@ function ReelIdeasPage() {
         <p className="text-sm text-white/60">Primeri video-a, hookova i captiona za tvoje reelse.</p>
       </div>
 
-      {/* VIDEO PRIMERI — horizontalni carousel sa snap-scroll (radi ODMAH, ne crn ekran) */}
-      {videos.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-base font-bold text-white/80">🎬 Video primeri</h2>
-            <span className="text-[10px] text-white/40">← skroluj →</span>
-          </div>
-          <div className="-mx-4 sm:mx-0 px-4 sm:px-0">
-            <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 scrollbar-hide" style={{scrollBehavior:'smooth'}}>
-              {videos.map(v => (
-                <div key={v.id} className="glass-strong rounded-xl overflow-hidden border border-white/10 shrink-0 snap-start" style={{width:'70%', maxWidth:'260px'}}>
-                  <div className="aspect-[9/16] bg-black relative">
-                    {renderVideo(v.video_url)}
-                  </div>
-                  <div className="p-2">
-                    <div className="text-[11px] font-bold text-white truncate leading-tight">{v.title || 'Reel primer'}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MISSION HOOKS — collapsible (auto scroll u view kad se otvori) */}
+      {/* MISSION HOOKS — collapsible (auto scroll u view kad se otvori) — GORE, iznad video sekcije */}
       {missions.length > 0 && (
         <details className="glass-strong rounded-2xl border border-gold/25 overflow-hidden group scroll-mt-4" onToggle={(e) => { if (e.target.open) setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'start'}), 100); }}>
           <summary className="cursor-pointer p-4 flex items-center justify-between hover:bg-white/5 select-none list-none">
@@ -7239,7 +7215,7 @@ function ReelIdeasPage() {
               <div key={m.id} className="rounded-xl p-3 bg-bg0/40 border border-gold/15 hover:border-gold/30 transition">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-gold font-bold">{m.title || 'MISSION'}</div>
-                  <button onClick={()=>copyToClipboard(`${m.title}\n🎣 Hook\n"${m.hook}"\nFormula: ${m.formula}`, 'm'+i)}
+                  <button onClick={()=>copyToClipboard(`${m.title}\n🎣 HOOK: "${m.hook}"\nFormula: ${m.formula}`, 'm'+i)}
                     className="text-[10px] px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-white/60 shrink-0">
                     {copiedIdx === 'm'+i ? '✓ Kopirano' : '📋'}
                   </button>
@@ -7258,7 +7234,7 @@ function ReelIdeasPage() {
         </details>
       )}
 
-      {/* CAPTIONS — collapsible (otvara se scrollom u view kad klikneš) */}
+      {/* CAPTIONS — collapsible (otvara se scrollom u view kad klikneš) — GORE, iznad video sekcije */}
       {captions.length > 0 && (
         <details className="glass-strong rounded-2xl border border-brand2/25 overflow-hidden group scroll-mt-4" onToggle={(e) => { if (e.target.open) setTimeout(() => e.target.scrollIntoView({behavior:'smooth', block:'start'}), 100); }}>
           <summary className="cursor-pointer p-4 flex items-center justify-between hover:bg-white/5 select-none list-none">
@@ -7286,6 +7262,30 @@ function ReelIdeasPage() {
             ))}
           </div>
         </details>
+      )}
+
+      {/* VIDEO PRIMERI — horizontalni carousel sa snap-scroll — DOLE ispod ideja */}
+      {videos.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-base font-bold text-white/80">🎬 Video primeri</h2>
+            <span className="text-[10px] text-white/40">← skroluj →</span>
+          </div>
+          <div className="-mx-4 sm:mx-0 px-4 sm:px-0">
+            <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 scrollbar-hide" style={{scrollBehavior:'smooth'}}>
+              {videos.map(v => (
+                <div key={v.id} className="glass-strong rounded-xl overflow-hidden border border-white/10 shrink-0 snap-start" style={{width:'70%', maxWidth:'260px'}}>
+                  <div className="aspect-[9/16] bg-black relative">
+                    {renderVideo(v.video_url)}
+                  </div>
+                  <div className="p-2">
+                    <div className="text-[11px] font-bold text-white truncate leading-tight">{v.title || 'Reel primer'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {videos.length === 0 && missions.length === 0 && captions.length === 0 && (
