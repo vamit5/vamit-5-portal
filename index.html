@@ -3644,7 +3644,7 @@ function AdminReelsQueue() {
       // Pokreni achievement engine — moze otkljucati reels/streak dostignuca
       await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected') {
-      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Ovaj reel računamo kao običan. Nastavi dalje, sledeći može biti validan!' }, '#/reels');
+      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Idemo dalje!' }, '#/reels');
     }
     load();
   }
@@ -3976,7 +3976,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
       await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected' && reel) {
-      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Ovaj reel računamo kao običan. Nastavi dalje, sledeći može biti validan!' }, '#/reels');
+      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Idemo dalje!' }, '#/reels');
     }
     load();
   }
@@ -4432,7 +4432,8 @@ function LeaderboardPage({ athlete }) {
     // SAD uzmemo stats za izabranu metriku
     const map = {};
     if (metric === 'reels') {
-      let q = supa.from('reels').select('athlete_id').eq('status','approved');
+      // Broji SVE reels-e (svi statusi — pending, approved, rejected)
+      let q = supa.from('reels').select('athlete_id');
       if (period === 'month') q = q.gte('submitted_at', monthStart.toISOString());
       const { data } = await q;
       (data||[]).forEach(r => { map[r.athlete_id] = (map[r.athlete_id]||0)+1; });
@@ -5735,7 +5736,7 @@ function AdminNotifications() {
 // Fallback poruke kad template fali u bazi
 const NOTIF_FALLBACK = {
   reel_approved:  { title: '✅ Reel odobren!',       body: 'Tvoj reel je odobren. +€{amount} dodato na zaradu.', icon:'🎬', priority:'high' },
-  reel_rejected:  { title: '🎬 Reel evidentiran',        body: 'Super! Ovaj reel računamo kao običan. Nastavi dalje — sledeći može biti validan i doneti ti zaradu! 💪', icon:'🎬', priority:'normal' },
+  reel_rejected:  { title: '🎬 Reel evidentiran',        body: 'Idemo dalje!',                                    icon:'🎬', priority:'normal' },
   payout_paid:    { title: '💰 Isplata izvršena!',     body: 'Tvoja isplata od €{amount} je poslata.',         icon:'💸', priority:'high' },
   payout_rejected:{ title: '❌ Isplata odbijena',      body: 'Tvoj payout zahtev je odbijen.',                 icon:'⚠️', priority:'high' },
   welcome:        { title: '👋 Dobrodošao u VAMIT-5!', body: 'Tvoj nalog je spreman. Postavi prvi Reel.',      icon:'🚀', priority:'high' },
@@ -6669,7 +6670,7 @@ function AdminReelsQueueLarge() {
         setFlash({ type:'ok', text:`✅ ODOBRENO + €${(reward/100).toFixed(2)} + 10 BODOVA.` });
       } else if (status === 'rejected') {
         try {
-          await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Ovaj reel računamo kao običan. Nastavi dalje, sledeći može biti validan!' }, '#/reels');
+          await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Idemo dalje!' }, '#/reels');
         } catch(e) { console.warn('Notif failed:', e); }
         setFlash({ type:'ok', text:'🎬 Označeno kao običan + atleta obavesten.' });
       }
