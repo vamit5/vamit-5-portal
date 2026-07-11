@@ -1607,19 +1607,15 @@ function Dashboard({ athlete, profile }) {
                   <span className="text-white/30 text-sm"> / {reelsTarget}</span>
                 </div>
               </div>
-              <div className="text-[11px] font-bold" style={{color: theme.color}}>€{reelReward} po reel-u</div>
+              <div className="text-[11px] font-bold" style={{color: theme.color}}>€{reelReward} po validnom reel-u</div>
             </div>
             <div className="h-2 rounded-full bg-white/5 overflow-hidden">
               <div className="h-full rounded-full transition-all" style={{ width: reelsPct+'%', background: theme.color }}/>
             </div>
             <div className="text-[11px] text-white/50 mt-1.5">
               {reelsRemaining > 0
-                ? tInterp('portal_progress_reels_remaining_tpl',
-                    `Ostalo još {x} reels-ova ${target.next ? 'do {next}' : ''}`,
-                    { x: reelsRemaining, next: target.next ? LEVEL_THEME[target.next].name : '' })
-                : tInterp('portal_progress_reels_done_tpl',
-                    `✓ Ispunio cilj reels-ova ${target.next ? 'za {next}' : ''}!`,
-                    { next: target.next ? LEVEL_THEME[target.next].name : '' })}
+                ? `Ostalo još ${reelsRemaining} reels-ova do cilja`
+                : '✓ Ispunio cilj reels-ova!'}
             </div>
           </div>
 
@@ -1649,19 +1645,18 @@ function Dashboard({ athlete, profile }) {
             </div>
           </div>
 
-          {/* Days bar */}
+          {/* Days bar — dani NA trenutnom nivou */}
           <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
             <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
               <div className="flex items-baseline gap-2">
-                <div className="text-[10px] uppercase tracking-wider text-white/50 font-bold">⏱️ Vreme</div>
                 <div className="font-display font-black text-xl">
-                  <span className="text-gold">{daysRemaining}</span>
-                  <span className="text-white/30 text-sm"> {target.next
-                    ? tInterp('portal_progress_days_remaining_tpl', 'dana do {next}', { x: daysRemaining, next: LEVEL_THEME[target.next].name })
-                    : 'dana'}</span>
+                  <span className="text-gold">{daysSinceLevelStart}</span>
+                  <span className="text-white/60 text-sm"> dana na </span>
+                  <span className="font-bold" style={{color: theme.color}}>{theme.name}</span>
+                  <span className="text-white/60 text-sm"> nivou</span>
                 </div>
               </div>
-              <div className="text-[11px] text-white/40">Dan {daysSinceLevelStart} / {target.days}</div>
+              <div className="text-[11px] text-white/40">od {target.days}</div>
             </div>
             <div className="h-2 rounded-full bg-white/5 overflow-hidden">
               <div className="h-full rounded-full bg-gold transition-all" style={{ width: daysPct+'%' }}/>
