@@ -1707,7 +1707,7 @@ function Dashboard({ athlete, profile }) {
         <MiniStat
           label="Reels (ukupno)"
           value={stats.reels_submitted_total}
-          sub={`✓ ${stats.reels_total} odobreno${stats.reels_pending ? ' · ⏳ ' + stats.reels_pending : ''}${stats.reels_rejected ? ' · ✗ ' + stats.reels_rejected : ''}`}
+          sub={`✓ ${stats.reels_total} validno${stats.reels_pending ? ' · ⏳ ' + stats.reels_pending : ''}${stats.reels_rejected ? ' · ' + stats.reels_rejected + ' običnih' : ''}`}
         />
         <MiniStat
           label="Reels (mesec)"
@@ -2007,7 +2007,7 @@ function ReelsPage({ athlete, profile }) {
   }
 
   const colors = { pending:'#ffc24b', approved:'#a6ff3b', rejected:'#9ca3af' };
-  const labels = { pending:'Pending review', approved:'✓ Validan reel', rejected:'Nevalidan reel' };
+  const labels = { pending:'Pending review', approved:'✓ Validan reel', rejected:'Običan reel' };
 
   // Statistika iz svih reels-ova ove atlete
   const reelsStats = {
@@ -2051,7 +2051,7 @@ function ReelsPage({ athlete, profile }) {
             <div className="font-display font-black text-lg text-gold">{reelsStats.pending}</div>
           </div>
           <div className="rounded-lg bg-bg0/40 p-2 text-center border border-white/10">
-            <div className="text-[9px] uppercase text-white/50 font-bold whitespace-nowrap">Nevalidan reel</div>
+            <div className="text-[9px] uppercase text-white/50 font-bold whitespace-nowrap">Običan reel</div>
             <div className="font-display font-black text-lg text-white/60">{reelsStats.rejected}</div>
           </div>
         </div>
@@ -3015,7 +3015,7 @@ const NOTIF_TYPES = [
   { key:'welcome',          label:'Dobrodošlica',                emoji:'👋' },
   { key:'level_up',         label:'Promocija nivoa',             emoji:'🎉' },
   { key:'reel_approved',    label:'Reel odobren',                emoji:'✅' },
-  { key:'reel_rejected',    label:'Reel odbijen',                emoji:'❌' },
+  { key:'reel_rejected',    label:'Reel evidentiran (običan)',   emoji:'🎬' },
   { key:'payout_paid',      label:'Isplata izvršena',            emoji:'💰' },
   { key:'payout_rejected',  label:'Isplata odbijena',            emoji:'⚠️' },
   { key:'achievement',      label:'Novo dostignuće',             emoji:'🏆' },
@@ -3644,7 +3644,7 @@ function AdminReelsQueue() {
       // Pokreni achievement engine — moze otkljucati reels/streak dostignuca
       await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected') {
-      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Ovaj reel računamo kao običan. Nastavi dalje, sledeći može biti validan!' }, '#/reels');
     }
     load();
   }
@@ -3976,7 +3976,7 @@ function AthleteDetailsModal({ athlete, onClose, onUpdate }) {
       await sendTemplated(reel.athlete_id, 'reel_approved', { amount: (reward/100).toFixed(2) }, '#/isplate');
       await triggerEngine(reel.athlete_id);
     } else if (status === 'rejected' && reel) {
-      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+      await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Ovaj reel računamo kao običan. Nastavi dalje, sledeći može biti validan!' }, '#/reels');
     }
     load();
   }
@@ -5735,7 +5735,7 @@ function AdminNotifications() {
 // Fallback poruke kad template fali u bazi
 const NOTIF_FALLBACK = {
   reel_approved:  { title: '✅ Reel odobren!',       body: 'Tvoj reel je odobren. +€{amount} dodato na zaradu.', icon:'🎬', priority:'high' },
-  reel_rejected:  { title: '❌ Reel odbijen',          body: '{reason}',                                       icon:'🎬', priority:'normal' },
+  reel_rejected:  { title: '🎬 Reel evidentiran',        body: 'Super! Ovaj reel računamo kao običan. Nastavi dalje — sledeći može biti validan i doneti ti zaradu! 💪', icon:'🎬', priority:'normal' },
   payout_paid:    { title: '💰 Isplata izvršena!',     body: 'Tvoja isplata od €{amount} je poslata.',         icon:'💸', priority:'high' },
   payout_rejected:{ title: '❌ Isplata odbijena',      body: 'Tvoj payout zahtev je odbijen.',                 icon:'⚠️', priority:'high' },
   welcome:        { title: '👋 Dobrodošao u VAMIT-5!', body: 'Tvoj nalog je spreman. Postavi prvi Reel.',      icon:'🚀', priority:'high' },
@@ -5893,7 +5893,7 @@ const TEMPLATE_LABELS = {
   welcome:           '👋 Dobrodošlica (kad atleta prvi put se loguje)',
   level_up:          '🎉 Promocija nivoa (REGRUT→PRO itd.)',
   reel_approved:     '✅ Reel odobren',
-  reel_rejected:     '❌ Reel odbijen',
+  reel_rejected:     '🎬 Reel evidentiran',
   payout_paid:       '💰 Isplata izvršena',
   payout_rejected:   '❌ Isplata odbijena',
   achievement:       '🏆 Novo dostignuće otključano',
@@ -6669,9 +6669,9 @@ function AdminReelsQueueLarge() {
         setFlash({ type:'ok', text:`✅ ODOBRENO + €${(reward/100).toFixed(2)} + 10 BODOVA.` });
       } else if (status === 'rejected') {
         try {
-          await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Tvoj reel ne ispunjava uslove.' }, '#/reels');
+          await sendTemplated(reel.athlete_id, 'reel_rejected', { reason: reason || 'Ovaj reel računamo kao običan. Nastavi dalje, sledeći može biti validan!' }, '#/reels');
         } catch(e) { console.warn('Notif failed:', e); }
-        setFlash({ type:'ok', text:'❌ Odbijeno + atleta obavestena.' });
+        setFlash({ type:'ok', text:'🎬 Označeno kao običan + atleta obavesten.' });
       }
 
       setTimeout(()=>setFlash(null), 4000);
