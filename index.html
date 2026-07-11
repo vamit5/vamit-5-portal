@@ -2003,11 +2003,60 @@ function ReelsPage({ athlete, profile }) {
   const colors = { pending:'#ffc24b', approved:'#a6ff3b', rejected:'#ff4d5e' };
   const labels = { pending:'Pending review', approved:'✓ Odobreno', rejected:'✗ Odbijeno' };
 
+  // Statistika iz svih reels-ova ove atlete
+  const reelsStats = {
+    total: reels.length,
+    approved: reels.filter(r => r.status === 'approved').length,
+    pending: reels.filter(r => r.status === 'pending').length,
+    rejected: reels.filter(r => r.status === 'rejected').length,
+  };
+  const approvedPct = reelsStats.total > 0 ? Math.round((reelsStats.approved / reelsStats.total) * 100) : 0;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-black mb-1">{t('portal_reels_title','🎬 Moji Reels')}</h1>
         <p className="text-sm text-white/60">{t('portal_reels_intro','Postavi Instagram Reel URL — admin proverava i ti zarađuješ.')}</p>
+      </div>
+
+      {/* STATISTIKA — validni reels-ovi kao glavna brojka + breakdown */}
+      <div className="glass-strong rounded-2xl p-5 sm:p-6 border border-lime/25">
+        <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-lime font-bold mb-1">✅ Validnih Reels-ova</div>
+            <div className="font-display font-black text-4xl sm:text-5xl text-lime leading-none">{reelsStats.approved}</div>
+            <div className="text-[11px] text-white/50 mt-1">od {reelsStats.total} ukupno postavljenih</div>
+          </div>
+          {reelsStats.total > 0 && (
+            <div className="text-right">
+              <div className="text-[10px] uppercase text-white/50 font-bold">Uspešnost</div>
+              <div className="font-display font-black text-2xl text-white">{approvedPct}%</div>
+            </div>
+          )}
+        </div>
+
+        {/* Progress bar validnih od ukupnih */}
+        {reelsStats.total > 0 && (
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden mb-3">
+            <div className="h-full rounded-full bg-lime transition-all" style={{ width: approvedPct + '%' }}/>
+          </div>
+        )}
+
+        {/* Breakdown po statusima */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-bg0/40 p-2 text-center border border-lime/15">
+            <div className="text-[9px] uppercase text-lime/80 font-bold">✓ Odobreno</div>
+            <div className="font-display font-black text-lg text-lime">{reelsStats.approved}</div>
+          </div>
+          <div className="rounded-lg bg-bg0/40 p-2 text-center border border-gold/20">
+            <div className="text-[9px] uppercase text-gold/80 font-bold">⏳ Na čekanju</div>
+            <div className="font-display font-black text-lg text-gold">{reelsStats.pending}</div>
+          </div>
+          <div className="rounded-lg bg-bg0/40 p-2 text-center border border-danger/20">
+            <div className="text-[9px] uppercase text-danger/80 font-bold">✗ Odbijeno</div>
+            <div className="font-display font-black text-lg text-danger">{reelsStats.rejected}</div>
+          </div>
+        </div>
       </div>
 
       <div className="glass-strong rounded-2xl p-5 sm:p-6">
