@@ -2006,8 +2006,8 @@ function ReelsPage({ athlete, profile }) {
     }
   }
 
-  const colors = { pending:'#ffc24b', approved:'#a6ff3b', rejected:'#ff4d5e' };
-  const labels = { pending:'Pending review', approved:'✓ Validan reel', rejected:'✗ Nevalidan reel' };
+  const colors = { pending:'#ffc24b', approved:'#a6ff3b', rejected:'#9ca3af' };
+  const labels = { pending:'Pending review', approved:'✓ Validan reel', rejected:'Nevalidan reel' };
 
   // Statistika iz svih reels-ova ove atlete
   const reelsStats = {
@@ -2050,9 +2050,9 @@ function ReelsPage({ athlete, profile }) {
             <div className="text-[9px] uppercase text-gold/80 font-bold">⏳ Na čekanju</div>
             <div className="font-display font-black text-lg text-gold">{reelsStats.pending}</div>
           </div>
-          <div className="rounded-lg bg-bg0/40 p-2 text-center border border-danger/20">
-            <div className="text-[9px] uppercase text-danger/80 font-bold">✗ Nevalidan reel</div>
-            <div className="font-display font-black text-lg text-danger">{reelsStats.rejected}</div>
+          <div className="rounded-lg bg-bg0/40 p-2 text-center border border-white/10">
+            <div className="text-[9px] uppercase text-white/50 font-bold whitespace-nowrap">Nevalidan reel</div>
+            <div className="font-display font-black text-lg text-white/60">{reelsStats.rejected}</div>
           </div>
         </div>
       </div>
