@@ -5348,34 +5348,150 @@ function LessonEditModal({ lesson, onClose, onSave }) {
 // === NOTIFICATIONS PAGE ===
 // =====================================================
 // Notifikacije ON/OFF dugme — vidljivo i u Notifikacije strani, ne samo Profil
-function NotificationToggle() {
-  const [granted, setGranted] = useState(typeof Notification !== 'undefined' && Notification.permission === 'granted');
-  const [denied, setDenied] = useState(typeof Notification !== 'undefined' && Notification.permission === 'denied');
+function NotificationToggle({ athlete }) {
+  const [permGranted, setPermGranted] = useState(typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  const [permDenied, setPermDenied] = useState(typeof Notification !== 'undefined' && Notification.permission === 'denied');
+  const [subActive, setSubActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  async function turnOn() {
-    if (typeof Notification === 'undefined') { alert('Browser ne podržava notifikacije.'); return; }
-    const r = await Notification.requestPermission();
-    setGranted(r === 'granted');
-    setDenied(r === 'denied');
-    if (r === 'granted') alert('✓ Notifikacije uključene.');
+  useEffect(() => { checkSub(); }, [athlete?.id]);
+
+  async function checkSub() {
+    setChecking(true);
+    try {
+      let hasBrowserSub = false;
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const s = await reg.pushManager.getSubscription();
+          hasBrowserSub = !!s;
+        } catch(e) {}
+      }
+      let hasDbSub = false;
+      if (athlete?.id) {
+        const { data } = await supa.from('push_subscriptions').select('id').eq('athlete_id', athlete.id).limit(1);
+        hasDbSub = !!(data && data.length);
+      }
+      setSubActive(hasBrowserSub && hasDbSub && permGranted);
+    } catch(e) { console.warn('checkSub fail:', e); }
+    setChecking(false);
   }
 
-  if (denied) return (
-    <div className="glass-strong rounded-2xl p-4 border border-danger/30">
-      <div className="font-bold text-sm">🚫 Notifikacije su blokirane u browseru</div>
-      <div className="text-[11px] text-white/60 mt-1">Idi u podešavanja browsera za ovaj sajt i dozvoli notifikacije.</div>
+  function b64ToUint8(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+
+  async function turnOn() {
+    if (!athlete?.id) { alert('Nije moguće — atleta nije pronađen.'); return; }
+    if (typeof Notification === 'undefined') { alert('Browser ne podržava notifikacije.'); return; }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('Push API nije podržan.\n\nNa iPhone-u: dodaj VAMIT-5 na Home Screen pa otvori PWA (iOS 16.4+).');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await Notification.requestPermission();
+      setPermGranted(r === 'granted');
+      setPermDenied(r === 'denied');
+      if (r !== 'granted') {
+        alert('Nisi dozvolio notifikacije. Uključi ih u browser podešavanjima za ovaj sajt.');
+        setBusy(false);
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      // clean old
+      try { await supa.from('push_subscriptions').delete().eq('athlete_id', athlete.id); } catch(e){}
+      let old = await reg.pushManager.getSubscription();
+      if (old) { try { await old.unsubscribe(); } catch(e){} }
+      const applicationServerKey = b64ToUint8(VAPID_PUBLIC_KEY);
+      let sub = null;
+      let lastErr = null;
+      for (let i = 1; i <= 3; i++) {
+        try {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+          lastErr = null; break;
+        } catch(e) { lastErr = e; if (i < 3) await new Promise(r=>setTimeout(r,1000)); }
+      }
+      if (!sub) throw new Error(lastErr?.message || 'Push registracija nije uspela.');
+      const j = sub.toJSON();
+      const { error } = await supa.from('push_subscriptions').upsert({
+        athlete_id: athlete.id,
+        endpoint: sub.endpoint,
+        p256dh: j.keys?.p256dh || '',
+        auth: j.keys?.auth || '',
+        user_agent: navigator.userAgent,
+        last_seen_at: new Date().toISOString()
+      }, { onConflict: 'endpoint' });
+      if (error) throw new Error(error.message);
+      setSubActive(true);
+      alert('✅ Notifikacije UKLJUČENE!');
+    } catch(e) {
+      console.error(e);
+      alert('❌ Greška: ' + (e.message || e));
+    }
+    setBusy(false);
+  }
+
+  async function turnOff() {
+    if (!athlete?.id) return;
+    if (!confirm('Isključiti push notifikacije na ovom uređaju?')) return;
+    setBusy(true);
+    try {
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const s = await reg.pushManager.getSubscription();
+          if (s) {
+            await supa.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
+            try { await s.unsubscribe(); } catch(e){}
+          }
+        } catch(e){ console.warn(e); }
+      }
+      // fallback: obrisi sve subs za ovog atletu
+      try { await supa.from('push_subscriptions').delete().eq('athlete_id', athlete.id); } catch(e){}
+      setSubActive(false);
+      alert('Notifikacije ISKLJUČENE. Više nećeš dobijati push obaveštenja na ovom uređaju.');
+    } catch(e) {
+      alert('❌ Greška: ' + (e.message || e));
+    }
+    setBusy(false);
+  }
+
+  if (permDenied) return (
+    <div className="glass-strong rounded-2xl p-4 border border-white/15">
+      <div className="font-bold text-sm">🔕 Notifikacije su blokirane u browseru</div>
+      <div className="text-[11px] text-white/60 mt-1">Otvori podešavanja browsera za ovaj sajt i dozvoli notifikacije, pa se vrati ovde.</div>
     </div>
   );
 
+  const on = subActive && permGranted;
   return (
-    <div className={"glass-strong rounded-2xl p-4 border " + (granted ? 'border-lime/40' : 'border-gold/40')}>
+    <div className={"glass-strong rounded-2xl p-4 border " + (on ? 'border-lime/40' : 'border-gold/40')}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <div className="font-bold text-sm">{granted ? '✓ Notifikacije UKLJUČENE' : '🔔 Uključi notifikacije'}</div>
-          <div className="text-[11px] text-white/60 mt-0.5">{granted ? 'Dobijaš obaveštenja i kad portal nije otvoren.' : 'Klikni da dozvoliš obaveštenja na telefonu/računaru.'}</div>
+          <div className="font-bold text-sm">{on ? '✓ Notifikacije UKLJUČENE' : '🔔 Notifikacije ISKLJUČENE'}</div>
+          <div className="text-[11px] text-white/60 mt-0.5">
+            {on ? 'Dobijaš obaveštenja i kad portal nije otvoren.' : 'Uključi da ti stižu push obaveštenja na telefon/računar.'}
+          </div>
         </div>
-        {!granted && (
-          <button onClick={turnOn} className="px-4 py-2 rounded-lg bg-brand text-bg0 text-xs font-bold shrink-0">Uključi</button>
+        {checking ? (
+          <div className="text-[11px] text-white/50 shrink-0">Provera...</div>
+        ) : on ? (
+          <button onClick={turnOff} disabled={busy}
+            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-bold shrink-0 disabled:opacity-50">
+            {busy ? '...' : 'Isključi'}
+          </button>
+        ) : (
+          <button onClick={turnOn} disabled={busy}
+            className="px-4 py-2 rounded-lg bg-brand text-bg0 text-xs font-bold shrink-0 disabled:opacity-50">
+            {busy ? '...' : 'Uključi'}
+          </button>
         )}
       </div>
     </div>
@@ -5441,7 +5557,7 @@ function NotificationsPage({ athlete }) {
       </div>
 
       {/* TOGGLE: ukljuci/iskljuci notifikacije */}
-      <NotificationToggle/>
+      <NotificationToggle athlete={athlete}/>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[['all','Sve'],['unread','Nepročitane'],['urgent','Hitne']].map(([k,l]) => (
