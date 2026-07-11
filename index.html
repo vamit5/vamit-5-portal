@@ -3022,18 +3022,46 @@ function NotificationPreferences({ athlete, refreshProfile }) {
         try { await sub.unsubscribe(); } catch(e){ console.warn(e); }
       }
 
-      // 5. Kreiraj sveze subscription
-      try {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
-      } catch(subErr) {
-        console.error('[VAMIT-PUSH] subscribe FAIL:', subErr);
-        alert('❌ pushManager.subscribe pukao:\n' + subErr.message + '\n\nProveri da je VAPID kljuc validan.');
+      // 5. Kreiraj sveze subscription — sa retry logikom za Firebase FCM greske
+      const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      let lastErr = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey
+          });
+          console.log('[VAMIT-PUSH] Fresh sub (pokusaj', attempt, '):', sub.endpoint);
+          lastErr = null;
+          break;
+        } catch(subErr) {
+          console.error('[VAMIT-PUSH] subscribe pokusaj', attempt, 'FAIL:', subErr);
+          lastErr = subErr;
+          if (attempt < 3) {
+            // Sacekaj sekundu pa probaj ponovo (FCM je nekad privremeno nedostupan)
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+      }
+      if (lastErr || !sub) {
+        const errMsg = lastErr?.message || 'Nepoznata greska';
+        // Detektuj specificne greske i daj instrukcije
+        let instructions = '';
+        if (errMsg.includes('push service') || errMsg.includes('Registration failed')) {
+          instructions = '\n\nOvo je problem Firebase (Android) servisa. Uradi ovo:\n' +
+            '1. Ugasi i upali Bluetooth\n' +
+            '2. Idi Settings → Apps → Chrome → Storage → Clear Cache\n' +
+            '3. Restartuj telefon\n' +
+            '4. Ponovo otvori portal i probaj\n\n' +
+            'Alternativa: iskljuci VPN ako ga koristis (VPN blokira Google Push).';
+        } else if (errMsg.includes('permission')) {
+          instructions = '\n\nDozvoli notifikacije: Settings → Apps → Chrome → Notifications → Allow.';
+        } else {
+          instructions = '\n\nRestartuj telefon i probaj ponovo. Ako i dalje ne radi, kontaktiraj admina.';
+        }
+        alert('❌ Push registracija nije uspela:\n' + errMsg + instructions);
         return;
       }
-      console.log('[VAMIT-PUSH] Fresh sub:', sub.endpoint);
 
       // 6. Sacuvaj UPSERT (siguran nacin — ako endpoint vec postoji, update-uj)
       const subJson = sub.toJSON();
