@@ -1447,7 +1447,13 @@ function Dashboard({ athlete, profile }) {
       .on('postgres_changes', { event:'*', schema:'public', table:'sales', filter: 'athlete_id=eq.'+athlete.id }, loadAll)
       .on('postgres_changes', { event:'*', schema:'public', table:'earnings_ledger', filter: 'athlete_id=eq.'+athlete.id }, loadAll)
       .subscribe();
-    return () => { try { ch.unsubscribe(); } catch(e){} };
+    // Osluskuj custom event kad atleta submituje reel sa druge stranice
+    const onReelSubmitted = () => loadAll();
+    window.addEventListener('vamit-reel-submitted', onReelSubmitted);
+    return () => {
+      try { ch.unsubscribe(); } catch(e){}
+      window.removeEventListener('vamit-reel-submitted', onReelSubmitted);
+    };
   }, [athlete?.id]);
 
   async function loadAll() {
@@ -1647,16 +1653,14 @@ function Dashboard({ athlete, profile }) {
 
           {/* Days bar — dani NA trenutnom nivou */}
           <div className="p-4 rounded-2xl bg-bg0/40 border border-white/10">
-            <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
-              <div className="flex items-baseline gap-2">
-                <div className="font-display font-black text-xl">
-                  <span className="text-gold">{daysSinceLevelStart}</span>
-                  <span className="text-white/60 text-sm"> dana na </span>
-                  <span className="font-bold" style={{color: theme.color}}>{theme.name}</span>
-                  <span className="text-white/60 text-sm"> nivou</span>
-                </div>
+            <div className="mb-3">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="font-display font-black text-3xl text-gold leading-none">{daysSinceLevelStart}</span>
+                <span className="text-white/70 text-sm">dana na</span>
+                <span className="font-display font-black text-lg" style={{color: theme.color}}>{theme.name}</span>
+                <span className="text-white/70 text-sm">nivou</span>
               </div>
-              <div className="text-[11px] text-white/40">od {target.days}</div>
+              <div className="text-[11px] text-white/50 mt-1.5">Uslov: min. {target.days} dana</div>
             </div>
             <div className="h-2 rounded-full bg-white/5 overflow-hidden">
               <div className="h-full rounded-full bg-gold transition-all" style={{ width: daysPct+'%' }}/>
@@ -1997,6 +2001,8 @@ function ReelsPage({ athlete, profile }) {
       setMsg({type:'ok', text:'Reel poslat! Admin će ga proveriti uskoro.'});
       setUrl(''); setCaption('');
       loadReels();
+      // Okini globalni event da Dashboard (i bilo koja druga komponenta) osvezi statistike
+      window.dispatchEvent(new CustomEvent('vamit-reel-submitted', { detail: { athleteId: athlete.id } }));
     }
   }
 
